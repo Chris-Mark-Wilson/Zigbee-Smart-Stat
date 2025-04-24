@@ -1,0 +1,12 @@
+#files to exclude
+#ignore build directory
+build/
+#ignore all .log files
+*.log
+#ignore all .tmp files
+*.tmp
+#ignore all .bak files
+*.bak
+#ignore all .swp files
+*.swp
+managed_components/
