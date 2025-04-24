@@ -9,4 +9,5 @@ build/
 *.bak
 #ignore all .swp files
 *.swp
+#managed_components gets build on build from idf_component.yml
 managed_components/
