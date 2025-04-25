@@ -47,3 +47,5 @@ The Zigbee stack is typically provided by the chip manufacturer or a third-party
 
 ### Summary
 The Zigbee stack is the software layer that implements the Zigbee protocol, enabling communication between Zigbee devices. For your ESP32-C6 project, refer to Espressif's Zigbee documentation and examples for detailed guidance. If you encounter issues, the debug logs and Espressif's forums are excellent resources for troubleshooting.
+
+## more info on thsi specific setup in README.md
