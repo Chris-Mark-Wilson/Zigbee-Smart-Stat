@@ -14,7 +14,7 @@
 
  #include "esp_zb_thermostat.h"
  #include "switch_driver.h"
- 
+ #include "dht.h"
  #include "string.h"
  #include "nvs_flash.h"
  #include "esp_log.h"
@@ -22,8 +22,37 @@
  #include "freertos/FreeRTOS.h"
  #include "freertos/task.h"
  #include "ha/esp_zigbee_ha_standard.h"
+ #include "esp_timer.h"
  
  #define ARRAY_LENTH(arr) (sizeof(arr) / sizeof(arr[0]))
+
+ // DHT22 sensor settings
+#define DHT_GPIO_PIN 11          // GPIO pin connected to DHT22 sensor
+#define DHT_TYPE DHT_TYPE_AM2301  // DHT22 and AM2301 are the same
+#define DHT_READ_INTERVAL_MS 10000 // Read every 10 seconds
+//control logic parameters
+#define MIN_SAFETY_TEMP 16.0       // Safety temperature threshold (never go below this)
+#define COMFORT_TEMP 21.0          // Comfort temperature when presence detected
+#define PRESENCE_TIMEOUT_MS 30000  // 30 seconds threshold for presence detection
+// TRV control settings
+#define TRV_TEMP_MAX 30  // Maximum temperature (TRV ON)
+#define TRV_TEMP_MIN 5   // Minimum temperature (TRV OFF)
+// RCWL-0516 Presence sensor settings
+#define RCWL_GPIO_PIN 10          // GPIO pin connected to RCWL presence sensor
+#define PRESENCE_DEBOUNCE_COUNT 3      // Number of consecutive readings needed to change state
+#define PRESENCE_SAMPLE_INTERVAL_MS 50 // Time between samples for debounce
+
+static bool g_presence_detected = false;  // Global presence state
+static bool g_rcwl_initialized = false;   // Flag to indicate if sensor is initialized
+// Global temperature and humidity storage
+static float g_temperature = 0;
+static float g_humidity = 0;
+static bool g_dht_initialized = false;
+// Global state tracking variables
+static int64_t g_last_presence_time = 0;  // Last time presence was detected
+static bool g_trv_is_on = false;  // Current TRV state
+static uint8_t g_presence_counter = 0;   // Counter for debouncing
+static bool g_last_raw_presence = false; // Last raw reading
  
  #if defined ZB_ED_ROLE
  #error Define ZB_COORDINATOR_ROLE in idf.py menuconfig to compile thermostat source code.
@@ -110,92 +139,48 @@
                          TAG, "Failed to start Zigbee bdb commissioning");
  }
  
- static void bind_cb(esp_zb_zdp_status_t zdo_status, void *user_ctx)
- {
-     esp_zb_zdo_bind_req_param_t *bind_req = (esp_zb_zdo_bind_req_param_t *)user_ctx;
- 
-     if (zdo_status == ESP_ZB_ZDP_STATUS_SUCCESS) {
-         /* Local binding succeeds */
-         if (bind_req->req_dst_addr == esp_zb_get_short_address()) {
-             ESP_LOGI(TAG, "Successfully bind the temperature sensor from address(0x%x) on endpoint(%d)",
-                      temp_sensor.short_addr, temp_sensor.endpoint);
- 
-             /* Read peer Manufacture Name & Model Identifier */
-             esp_zb_zcl_read_attr_cmd_t read_req = {0};
-             read_req.address_mode = ESP_ZB_APS_ADDR_MODE_16_ENDP_PRESENT;
-             read_req.zcl_basic_cmd.src_endpoint = HA_THERMOSTAT_ENDPOINT;
-             read_req.zcl_basic_cmd.dst_endpoint = temp_sensor.endpoint;
-             read_req.zcl_basic_cmd.dst_addr_u.addr_short = temp_sensor.short_addr;
-             read_req.clusterID = ESP_ZB_ZCL_CLUSTER_ID_BASIC;
- 
-             uint16_t attributes[] = {
-                 ESP_ZB_ZCL_ATTR_BASIC_MANUFACTURER_NAME_ID,
-                 ESP_ZB_ZCL_ATTR_BASIC_MODEL_IDENTIFIER_ID,
-             };
-             read_req.attr_number = ARRAY_LENTH(attributes);
-             read_req.attr_field = attributes;
- 
-             esp_zb_zcl_read_attr_cmd_req(&read_req);
-         }
-         if (bind_req->req_dst_addr == temp_sensor.short_addr) {
-             ESP_LOGI(TAG, "The temperature sensor from address(0x%x) on endpoint(%d) successfully binds us",
-                      temp_sensor.short_addr, temp_sensor.endpoint);
-         }
-         free(bind_req);
-     }
-     else {
-         /* Bind failed, maybe retry the binding ? */
- 
-         // esp_zb_zdo_device_bind_req(bind_req, bind_cb, bind_req);
-     }
- }
- 
+static void bind_cb(esp_zb_zdp_status_t zdo_status, void *user_ctx)
+{
+    esp_zb_zdo_bind_req_param_t *bind_req = (esp_zb_zdo_bind_req_param_t *)user_ctx;
+
+    if (zdo_status == ESP_ZB_ZDP_STATUS_SUCCESS) {
+        /* Local binding succeeds */
+        if (bind_req->req_dst_addr == esp_zb_get_short_address()) {
+            ESP_LOGI(TAG, "[TRV] 🔗 Successfully bound to TRV at address(0x%x) on endpoint(%d)",
+                     temp_sensor.short_addr, temp_sensor.endpoint);
+
+            /* Read peer Manufacture Name & Model Identifier */
+            // ... existing code ...
+        }
+        if (bind_req->req_dst_addr == temp_sensor.short_addr) {
+            ESP_LOGI(TAG, "[TRV] 🔗 The TRV at address(0x%x) on endpoint(%d) successfully bound to us",
+                     temp_sensor.short_addr, temp_sensor.endpoint);
+        }
+        free(bind_req);
+    }
+    else {
+        ESP_LOGW(TAG, "[TRV] ❌ Binding failed with status: %d", zdo_status);
+        free(bind_req);
+    }
+} 
  static void user_find_cb(esp_zb_zdp_status_t zdo_status, uint16_t peer_addr, uint8_t peer_endpoint, void *user_ctx)
- {
-     if (zdo_status == ESP_ZB_ZDP_STATUS_SUCCESS) {
-         ESP_LOGI(TAG, "Found temperature sensor");
-         /* Store the information of the remote device */
-         temp_sensor_device_params_t *sensor = (temp_sensor_device_params_t *)user_ctx;
-         sensor->endpoint = peer_endpoint;
-         sensor->short_addr = peer_addr;
-         esp_zb_ieee_address_by_short(sensor->short_addr, sensor->ieee_addr);
- 
-         /* 1. Send binding request to the sensor */
-         esp_zb_zdo_bind_req_param_t *bind_req = (esp_zb_zdo_bind_req_param_t *)calloc(sizeof(esp_zb_zdo_bind_req_param_t), 1);
-         bind_req->req_dst_addr = peer_addr;
- 
-         /* populate the src information of the binding */
-         memcpy(bind_req->src_address, sensor->ieee_addr, sizeof(esp_zb_ieee_addr_t));
-         bind_req->src_endp = peer_endpoint;
-         bind_req->cluster_id = ESP_ZB_ZCL_CLUSTER_ID_TEMP_MEASUREMENT;
- 
-         /* populate the dst information of the binding */
-         bind_req->dst_addr_mode = ESP_ZB_ZDO_BIND_DST_ADDR_MODE_64_BIT_EXTENDED;
-         esp_zb_get_long_address(bind_req->dst_address_u.addr_long);
-         bind_req->dst_endp = HA_THERMOSTAT_ENDPOINT;
- 
-         ESP_LOGI(TAG, "Request temperature sensor to bind us");
-         esp_zb_zdo_device_bind_req(bind_req, bind_cb, bind_req);
- 
-         /* 2. Send binding request to self */
-         bind_req = (esp_zb_zdo_bind_req_param_t *)calloc(sizeof(esp_zb_zdo_bind_req_param_t), 1);
-         bind_req->req_dst_addr = esp_zb_get_short_address();
- 
-         /* populate the src information of the binding */
-         esp_zb_get_long_address(bind_req->src_address);
-         bind_req->src_endp = HA_THERMOSTAT_ENDPOINT;
-         bind_req->cluster_id = ESP_ZB_ZCL_CLUSTER_ID_TEMP_MEASUREMENT;
- 
-         /* populate the dst information of the binding */
-         bind_req->dst_addr_mode = ESP_ZB_ZDO_BIND_DST_ADDR_MODE_64_BIT_EXTENDED;
-         memcpy(bind_req->dst_address_u.addr_long, sensor->ieee_addr, sizeof(esp_zb_ieee_addr_t));
-         bind_req->dst_endp = peer_endpoint;
- 
-         ESP_LOGI(TAG, "Bind temperature sensor");
-         esp_zb_zdo_device_bind_req(bind_req, bind_cb, bind_req);
-     }
- }
- 
+{
+    if (zdo_status == ESP_ZB_ZDP_STATUS_SUCCESS) {
+        ESP_LOGI(TAG, "[TRV] 🔍 Found TRV device at address 0x%04x, endpoint %d", peer_addr, peer_endpoint);
+        /* Store the information of the remote device */
+        temp_sensor_device_params_t *sensor = (temp_sensor_device_params_t *)user_ctx;
+        sensor->endpoint = peer_endpoint;
+        sensor->short_addr = peer_addr;
+        esp_zb_ieee_address_by_short(sensor->short_addr, sensor->ieee_addr);
+
+        // Additional logging to show successful TRV discovery
+        ESP_LOGI(TAG, "[TRV] 🎯 TRV registered successfully - starting binding process");
+        
+        /* Existing binding code... */
+    } else {
+        ESP_LOGW(TAG, "[TRV] ❌ Failed to find TRV device (status: %d)", zdo_status);
+    }
+}
  static void find_temperature_sensor(esp_zb_zdo_match_desc_req_param_t *param, esp_zb_zdo_match_desc_callback_t user_cb, void *user_ctx)
  {
      uint16_t cluster_list[] = {ESP_ZB_ZCL_CLUSTER_ID_TEMP_MEASUREMENT};
@@ -443,6 +428,308 @@
      return ep_list;
  }
  
+ // Initialise DHT sensor
+
+
+
+static esp_err_t dht_sensor_init(void)
+{
+    if (g_dht_initialized) {
+        return ESP_OK;
+    }
+    
+    ESP_LOGI(TAG, "Configuring DHT sensor on GPIO %d", DHT_GPIO_PIN);
+    
+    // Configure GPIO (the DHT library will handle the mode changes during readings)
+    gpio_config_t io_conf = {
+        .pin_bit_mask = (1ULL << DHT_GPIO_PIN),
+        .mode = GPIO_MODE_INPUT_OUTPUT_OD,  // Open drain for DHT22
+        .pull_up_en = GPIO_PULLUP_ENABLE,
+        .pull_down_en = GPIO_PULLDOWN_DISABLE,
+        .intr_type = GPIO_INTR_DISABLE,
+    };
+    esp_err_t ret = gpio_config(&io_conf);
+    
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "GPIO configuration failed: %s", esp_err_to_name(ret));
+        return ret;
+    }
+    
+    g_dht_initialized = true;
+    ESP_LOGI(TAG, "DHT sensor GPIO configured successfully");
+    return ESP_OK;
+}
+
+// presence sensor initialization
+static esp_err_t rcwl_sensor_init(void)
+{
+    if (g_rcwl_initialized) {
+        return ESP_OK;
+    }
+    
+    ESP_LOGI(TAG, "Configuring RCWL presence sensor on GPIO %d", RCWL_GPIO_PIN);
+    
+    // Configure GPIO as input (sensor outputs HIGH when presence detected)
+    gpio_config_t io_conf = {
+        .pin_bit_mask = (1ULL << RCWL_GPIO_PIN),
+        .mode = GPIO_MODE_INPUT,
+        .pull_up_en = GPIO_PULLUP_DISABLE,
+        .pull_down_en = GPIO_PULLDOWN_ENABLE,  // Pull-down when no signal
+        .intr_type = GPIO_INTR_DISABLE,
+    };
+    esp_err_t ret = gpio_config(&io_conf);
+    
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "GPIO configuration for RCWL failed: %s", esp_err_to_name(ret));
+        return ret;
+    }
+    
+    g_rcwl_initialized = true;
+    ESP_LOGI(TAG, "RCWL presence sensor configured successfully");
+    return ESP_OK;
+}
+
+// read the temp sensor function
+static esp_err_t read_dht_sensor(void)
+{
+    if (!g_dht_initialized) {
+        ESP_LOGE(TAG, "DHT sensor not initialized");
+        return ESP_ERR_INVALID_STATE;
+    }
+    
+    float temperature = 0;
+    float humidity = 0;
+    
+    // Use dht_read_float_data directly from the library
+    esp_err_t ret = dht_read_float_data(DHT_TYPE, DHT_GPIO_PIN, &humidity, &temperature);
+    if (ret != ESP_OK) {
+        ESP_LOGW(TAG, "Failed to read data from DHT sensor: %s", esp_err_to_name(ret));
+        return ret;
+    }
+    
+    g_temperature = temperature;
+    g_humidity = humidity;
+    
+    ESP_LOGI(TAG, "DHT22 Readings - Temperature: %.1f°C, Humidity: %.1f%%", temperature, humidity);
+    return ESP_OK;
+}
+
+//read the presence sensor function
+static esp_err_t read_rcwl_sensor(void)
+{
+    if (!g_rcwl_initialized) {
+        ESP_LOGE(TAG, "RCWL sensor not initialized");
+        return ESP_ERR_INVALID_STATE;
+    }
+    
+    // Read the GPIO pin (raw reading)
+    int level = gpio_get_level(RCWL_GPIO_PIN);
+    bool current_raw_presence = (level == 1);
+    
+    // Debouncing logic
+    if (current_raw_presence != g_last_raw_presence) {
+        // Reset counter on state change
+        g_presence_counter = 1;
+        g_last_raw_presence = current_raw_presence;
+    } else {
+        // Increment counter for consistent readings
+        if (g_presence_counter < PRESENCE_DEBOUNCE_COUNT) {
+            g_presence_counter++;
+        } else if (g_presence_counter == PRESENCE_DEBOUNCE_COUNT) {
+            // We've reached the threshold, update the actual presence state
+            if (g_presence_detected != current_raw_presence) {
+                g_presence_detected = current_raw_presence;
+                ESP_LOGI(TAG, "RCWL Presence state changed: %s", 
+                         g_presence_detected ? "DETECTED" : "NOT DETECTED");
+            }
+        }
+    }
+    
+    return ESP_OK;
+}
+// Function to set TRV target temperature 
+// Function to set TRV target temperature 
+static void set_trv_temperature(uint8_t target_temp) {
+    int16_t target_temp_value = target_temp * 100; // Convert to centi-degrees
+
+    // Detailed connection status check with address info
+    if (temp_sensor.short_addr == 0) {
+        ESP_LOGW(TAG, "[TRV] No valid TRV connection yet, skipping temperature command (target: %d°C)", target_temp);
+        return;
+    }
+
+    ESP_LOGI(TAG, "[TRV] Sending temperature command to TRV (addr: 0x%04x, ep: %d) → %d°C", 
+             temp_sensor.short_addr, temp_sensor.endpoint, target_temp);
+    
+    esp_zb_zcl_write_attr_cmd_t write_req = {0};
+    write_req.address_mode = ESP_ZB_APS_ADDR_MODE_16_ENDP_PRESENT;
+    write_req.zcl_basic_cmd.src_endpoint = HA_THERMOSTAT_ENDPOINT;
+    write_req.zcl_basic_cmd.dst_endpoint = temp_sensor.endpoint;
+    write_req.zcl_basic_cmd.dst_addr_u.addr_short = temp_sensor.short_addr;
+    write_req.clusterID = ESP_ZB_ZCL_CLUSTER_ID_THERMOSTAT;
+    
+    esp_zb_zcl_attribute_t attr = {
+        .id = ESP_ZB_ZCL_ATTR_THERMOSTAT_OCCUPIED_HEATING_SETPOINT_ID,
+        .data.type = ESP_ZB_ZCL_ATTR_TYPE_S16,
+        .data.value = &target_temp_value
+    };
+    
+    write_req.attr_field = &attr;
+    write_req.attr_number = 1;
+    
+    esp_zb_lock_acquire(portMAX_DELAY);
+    esp_err_t err = esp_zb_zcl_write_attr_cmd_req(&write_req);
+    esp_zb_lock_release();
+    
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "[TRV] Failed to send temperature command: %s", esp_err_to_name(err));
+    } else {
+        ESP_LOGI(TAG, "[TRV] Temperature command sent successfully");
+    }
+}
+// Function to turn TRV on
+static void turn_trv_on(const char* reason) {
+    if (!g_trv_is_on) {
+        ESP_LOGI(TAG, "Turning TRV ON - Reason: %s", reason);
+        set_trv_temperature(TRV_TEMP_MAX);
+        g_trv_is_on = true;
+    }
+}
+
+// Function to turn TRV off
+static void turn_trv_off(const char* reason) {
+    if (g_trv_is_on) {
+        // Safety check - don't turn off if below minimum safety temperature
+        if (g_temperature < MIN_SAFETY_TEMP) {
+            ESP_LOGI(TAG, "Refusing to turn TRV OFF - Temperature %.1f°C below safety threshold %.1f°C", 
+                    g_temperature, MIN_SAFETY_TEMP);
+            return;
+        }
+        
+        ESP_LOGI(TAG, "Turning TRV OFF - Reason: %s", reason);
+        set_trv_temperature(TRV_TEMP_MIN);
+        g_trv_is_on = false;
+    }
+}
+// Function to check if TRV is connected and available
+static bool is_trv_connected(void) {
+    bool connected = (temp_sensor.short_addr != 0);
+    return connected;
+}
+
+// Control logic function
+static void evaluate_control_logic(void) {
+    int64_t current_time = esp_timer_get_time() / 1000; // Current time in milliseconds
+    int64_t time_since_last_presence = current_time - g_last_presence_time;
+    
+    // Update presence timestamp if currently detected
+    if (g_presence_detected) {
+        g_last_presence_time = current_time;
+    }
+    
+    // Check TRV connection status
+    bool trv_connected = is_trv_connected();
+    
+    // Log current system state
+    ESP_LOGI(TAG, "Status: Temp=%.1f°C | Presence: %s | TRV: %s | TRV Status: %s", 
+             g_temperature,
+             g_presence_detected ? "YES" : "NO",
+             trv_connected ? "CONNECTED" : "NOT CONNECTED",
+             g_trv_is_on ? "ON" : "OFF");
+    
+    // Don't attempt control logic if TRV not connected
+    if (!trv_connected) {
+        ESP_LOGW(TAG, "[TRV] Cannot control TRV - not connected");
+        return;
+    }
+    
+    // === Control logic based on the requirements ===
+    
+    // Safety threshold - don't let temperature drop too low
+    if (g_temperature < MIN_SAFETY_TEMP) {
+        turn_trv_on("Temperature below minimum safety threshold");
+        return;
+    }
+    
+    // Turn off TRV if temperature is above comfort level (even if presence is detected)
+    if (g_temperature >= COMFORT_TEMP) {
+        turn_trv_off("Temperature above or at comfort threshold");
+        return;
+    }
+    
+    // Comfort control when presence detected and temperature below comfort level
+    if (g_presence_detected && g_temperature < COMFORT_TEMP) {
+        turn_trv_on("Presence detected and temperature below comfort threshold");
+        return;
+    }
+    
+    // Turn off if no presence for specified timeout
+    if (time_since_last_presence > PRESENCE_TIMEOUT_MS) {
+        turn_trv_off("No presence detected for timeout period");
+        return;
+    }
+}// Updated sensor task with control logic
+static void dht_sensor_task(void *pvParameters)
+{
+    // Initialize both sensors
+    esp_err_t dht_ret = dht_sensor_init();
+    esp_err_t rcwl_ret = rcwl_sensor_init();
+    
+    // Initialize timer for control logic
+    g_last_presence_time = esp_timer_get_time() / 1000; // Current time in ms
+    
+    if (dht_ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to initialize DHT sensor");
+    }
+    
+    if (rcwl_ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to initialize RCWL sensor");
+    }
+    
+    if (dht_ret != ESP_OK && rcwl_ret != ESP_OK) {
+        ESP_LOGE(TAG, "All sensors failed to initialize, ending task");
+        vTaskDelete(NULL);
+        return;
+    }
+    
+    ESP_LOGI(TAG, "Sensor monitoring task started");
+    ESP_LOGI(TAG, "Control settings: Safety temp: %.1f°C, Comfort temp: %.1f°C, Presence timeout: %d sec",
+            MIN_SAFETY_TEMP, COMFORT_TEMP, PRESENCE_TIMEOUT_MS/1000);
+    
+    // Update reading interval to 2 seconds
+    const int READ_INTERVAL_MS = 2000;
+    
+    // Main task loop
+   
+while (1) {
+    // Read temperature sensor at normal interval (less frequent)
+    static int temp_counter = 0;
+    if (g_dht_initialized && temp_counter++ >= (READ_INTERVAL_MS / PRESENCE_SAMPLE_INTERVAL_MS)) {
+        read_dht_sensor();
+        temp_counter = 0;
+        
+        // Combined sensor status log after temperature reading
+        if (g_dht_initialized && g_rcwl_initialized) {
+            ESP_LOGI(TAG, "Status: Temp=%.1f°C, Humidity: %.1f%%, Presence: %s", 
+                    g_temperature, g_humidity, g_presence_detected ? "DETECTED" : "NOT DETECTED");
+        }
+    }
+    
+    // Read presence sensor more frequently for debouncing
+    if (g_rcwl_initialized) {
+        read_rcwl_sensor();
+    }
+    
+    // Run control logic at normal interval
+    if (temp_counter == 0) {
+        evaluate_control_logic();
+    }
+    
+    // Shorter delay for presence sampling
+    vTaskDelay(pdMS_TO_TICKS(PRESENCE_SAMPLE_INTERVAL_MS));
+}
+}
+
  static void esp_zb_task(void *pvParameters)
  {
      /* Initialize Zigbee stack */
@@ -462,14 +749,21 @@
      esp_zb_stack_main_loop();
  }
  
- void app_main(void)
- {
-     esp_zb_platform_config_t config = {
-         .radio_config = ESP_ZB_DEFAULT_RADIO_CONFIG(),
-         .host_config = ESP_ZB_DEFAULT_HOST_CONFIG(),
-     };
-     ESP_ERROR_CHECK(nvs_flash_init());
-     ESP_ERROR_CHECK(esp_zb_platform_config(&config));
-     xTaskCreate(esp_zb_task, "Zigbee_main", 4096, NULL, 5, NULL);
- }
+// Modify the app_main function to include this new task creation
+
+void app_main(void)
+{
+    esp_zb_platform_config_t config = {
+        .radio_config = ESP_ZB_DEFAULT_RADIO_CONFIG(),
+        .host_config = ESP_ZB_DEFAULT_HOST_CONFIG(),
+    };
+    ESP_ERROR_CHECK(nvs_flash_init());
+    ESP_ERROR_CHECK(esp_zb_platform_config(&config));
+    
+    // Create Zigbee main task
+    xTaskCreate(esp_zb_task, "Zigbee_main", 4096, NULL, 5, NULL);
+    
+    // Create DHT sensor monitoring task
+    xTaskCreate(dht_sensor_task, "DHT_sensor", 2048, NULL, 4, NULL);
+}
  

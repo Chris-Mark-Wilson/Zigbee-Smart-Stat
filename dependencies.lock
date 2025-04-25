@@ -1,4 +1,23 @@
 dependencies:
+  achimpieters/esp32-dht:
+    component_hash: e605fcdad07d9d9ad63fe14585b14bee8b4b6c7862247bf590cae44226f8e09c
+    dependencies:
+    - name: idf
+      require: private
+      version: '>=5.0'
+    source:
+      registry_url: https://components.espressif.com/
+      type: service
+    targets:
+    - esp32
+    - esp32c2
+    - esp32c3
+    - esp32c5
+    - esp32c6
+    - esp32c61
+    - esp32s2
+    - esp32s3
+    version: 1.0.2
   espressif/esp-zboss-lib:
     component_hash: 321883d142421f65009972408287441794250057668a11abbdfd8bec77c3309a
     dependencies:
@@ -24,9 +43,10 @@ dependencies:
       type: idf
     version: 5.4.1
 direct_dependencies:
+- achimpieters/esp32-dht
 - espressif/esp-zboss-lib
 - espressif/esp-zigbee-lib
 - idf
-manifest_hash: b5cc473d2be906c91c9be7fe22229ae8428299d5c37a428f0f15d1340c384cc7
+manifest_hash: 787ebe47439469528f8460c715743b7e01748d83004af08fa237aa8a6535a8bc
 target: esp32c6
 version: 2.0.0
