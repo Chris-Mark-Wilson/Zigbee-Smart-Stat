@@ -67,7 +67,9 @@ typedef struct zbstring_s
 {
     uint8_t len;
     char data[];
-} ESP_ZB_PACKED_STRUCT
+} 
+
+ESP_ZB_PACKED_STRUCT
     zbstring_t;
 
 typedef struct temp_sensor_device_params_s
