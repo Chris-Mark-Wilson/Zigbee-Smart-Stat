@@ -1,3 +1,5 @@
 {
-    "idf.pythonInstallPath": "/usr/bin/python3"
+    "idf.pythonInstallPath": "/usr/bin/python3",
+    "idf.espIdfPath": "/home/chris/esp/esp-idf",
+    "idf.toolsPath": "/home/chris/.espressif"
 }

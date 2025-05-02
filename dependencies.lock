@@ -41,12 +41,20 @@ dependencies:
   idf:
     source:
       type: idf
-    version: 5.4.1
+    version: 5.5.0
+  lvgl/lvgl:
+    component_hash: 948bff879a345149b83065535bbc4a026ce9f47498a22881e432a264b9098015
+    dependencies: []
+    source:
+      registry_url: https://components.espressif.com/
+      type: service
+    version: 8.3.11
 direct_dependencies:
 - achimpieters/esp32-dht
 - espressif/esp-zboss-lib
 - espressif/esp-zigbee-lib
 - idf
-manifest_hash: 787ebe47439469528f8460c715743b7e01748d83004af08fa237aa8a6535a8bc
+- lvgl/lvgl
+manifest_hash: eb2a702f4025bcd9e1056d479baa5815aacf7906948680feaa615758229d7e89
 target: esp32c6
 version: 2.0.0

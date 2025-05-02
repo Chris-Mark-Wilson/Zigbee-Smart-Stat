@@ -23,11 +23,14 @@
 #include "freertos/task.h"
 #include "ha/esp_zigbee_ha_standard.h"
 #include "esp_timer.h"
+//lcd headers
+#include "ST7789.h"
+#include "LVGL_Example.h"
 
 #define ARRAY_LENTH(arr) (sizeof(arr) / sizeof(arr[0]))
 
 // DHT22 sensor settings
-#define DHT_GPIO_PIN 11            // GPIO pin connected to DHT22 sensor
+#define DHT_GPIO_PIN 4          // GPIO pin connected to DHT22 sensor
 #define DHT_TYPE DHT_TYPE_AM2301   // DHT22 and AM2301 are the same
 #define DHT_READ_INTERVAL_MS 10000 // Read every 10 seconds
 // control logic parameters
@@ -38,7 +41,7 @@
 #define TRV_TEMP_MAX 30 // Maximum temperature (TRV ON)
 #define TRV_TEMP_MIN 5  // Minimum temperature (TRV OFF)
 // RCWL-0516 Presence sensor settings
-#define RCWL_GPIO_PIN 10               // GPIO pin connected to RCWL presence sensor
+#define RCWL_GPIO_PIN 5               // GPIO pin connected to RCWL presence sensor
 #define PRESENCE_DEBOUNCE_COUNT 3      // Number of consecutive readings needed to change state
 #define PRESENCE_SAMPLE_INTERVAL_MS 50 // Time between samples for debounce
 
@@ -68,7 +71,6 @@ typedef struct zbstring_s
     uint8_t len;
     char data[];
 } 
-
 ESP_ZB_PACKED_STRUCT
     zbstring_t;
 
@@ -823,7 +825,39 @@ static void esp_zb_task(void *pvParameters)
     esp_zb_stack_main_loop();
 }
 
-// Modify the app_main function to include this new task creation
+
+// // Define a timer handle
+// TimerHandle_t lvgl_timer;
+
+// // Callback function for the timer to handle LVGL tasks
+// void lvgl_timer_callback(TimerHandle_t xTimer)
+// {
+//     lv_timer_handler();  // Update LVGL UI
+// }
+
+void lvgl_task(void *pvParameters)
+{
+    char buf[64]; // Buffer for displaying temperature and presence status
+
+    while (1)
+    {
+        lv_task_handler(); 
+        // Update temperature label
+        snprintf(buf, sizeof(buf), "Temp: %.1f°C", g_temperature);
+        lv_label_set_text(label_temp, buf);
+
+        // Update presence label
+        snprintf(buf, sizeof(buf), "Presence: %s", g_presence_detected ? "DETECTED" : "NONE");
+        lv_label_set_text(label_presence, buf);
+
+        // Update TRV status label
+        snprintf(buf, sizeof(buf), "TRV: %s", g_trv_is_on ? "ON" : "OFF");
+        lv_label_set_text(label_trv, buf);
+
+        vTaskDelay(pdMS_TO_TICKS(1000)); // Update every second (adjust as needed)
+    }
+}
+
 
 void app_main(void)
 {
@@ -834,9 +868,17 @@ void app_main(void)
     ESP_ERROR_CHECK(nvs_flash_init());
     ESP_ERROR_CHECK(esp_zb_platform_config(&config));
 
+    LCD_Init();    
+    LVGL_Init(); // Initialize LVGL library
+
+    Lvgl_Example1();
+
     // Create Zigbee main task
     xTaskCreate(esp_zb_task, "Zigbee_main", 4096, NULL, 5, NULL);
 
     // Create DHT sensor monitoring task
     xTaskCreate(dht_sensor_task, "DHT_sensor", 2048, NULL, 4, NULL);
+
+    //xTaskCreate(TaskFunction_t functionname, const char * const pcName, uint32_t usStackDepth, void *pvParameters, UBaseType_t uxPriority, TaskHandle_t *pvCreatedTask); // Create a task
+    xTaskCreate(lvgl_task, "lvgl_task", 8192, NULL, 6, NULL); // Create LVGL task
 }
