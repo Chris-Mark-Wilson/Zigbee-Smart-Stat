@@ -1,0 +1,32 @@
+{
+    "configurations": [
+        {
+            "name": "Linux",
+            "includePath": [
+                "${workspaceFolder}/**",
+                "~/esp/esp-idf",
+                "/home/chris/esp/esp-idf/components/freertos/FreeRTOS-Kernel-SMP/include",
+                "/home/chris/esp/esp-idf/components/freertos/config/include/freertos",
+                "/home/chris/esp/esp-idf/components/freertos/config/linux/include",
+                "/home/chris/esp/esp-idf/components/esp_common/include"
+            ],
+            "defines": [
+                "ESP_PLATFORM",
+                "ESP32",
+                "ESP32C6",
+                "ESP32S3",
+                "IDF_VER=\"v5.0-dev-123-g1234567\"",
+                "__has_include(<freertos/FreeRTOS.h>)",
+                "__has_include(<freertos/FreeRTOSConfig.h>)"
+            ],
+            "compilerPath": "/usr/bin/g++",
+            "cStandard": "c17",
+            "cppStandard": "gnu++17",
+            "intelliSenseMode": "linux-clang-x64",
+            "compileCommands": [
+                "./build/compile_commands.json"
+            ]
+        }
+    ],
+    "version": 4
+}
