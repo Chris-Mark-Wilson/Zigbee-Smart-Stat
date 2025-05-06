@@ -6,7 +6,7 @@
 #include "nvs_flash.h"
 
 // Make sure we're using the WEAK attribute for the signal handler
-extern void esp_zb_app_signal_handler(esp_zb_app_signal_t *signal_struct);
+extern void zigbee_signal_handler(esp_zb_app_signal_t *signal_struct);
 
 // Other function declarations
 void start_commissioning(void);

@@ -1,31 +1,40 @@
 {
     "configurations": [
         {
-            "name": "Linux",
+            "name": "ESP-IDF",
             "includePath": [
                 "${workspaceFolder}/**",
-                "~/esp/esp-idf",
+                "${env:IDF_PATH}/components/**",
+                "${workspaceFolder}/managed_components/**",
+                "${workspaceFolder}/build/config/*",
+                "/home/chris/esp/esp-idf/components/**",
+                "${workspaceFolder}/managed_components/espressif__esp-zigbee-lib/include",
+                "${workspaceFolder}/managed_components/espressif__esp-zboss-lib/include",
                 "/home/chris/esp/esp-idf/components/freertos/FreeRTOS-Kernel-SMP/include",
                 "/home/chris/esp/esp-idf/components/freertos/config/include/freertos",
-                "/home/chris/esp/esp-idf/components/freertos/config/linux/include",
-                "/home/chris/esp/esp-idf/components/esp_common/include"
+                "/home/chris/esp/esp-idf/components/esp_common/include",
+                "/home/chris/esp/esp-idf/components/nvs_flash/include"
             ],
             "defines": [
                 "ESP_PLATFORM",
-                "ESP32",
                 "ESP32C6",
-                "ESP32S3",
-                "IDF_VER=\"v5.0-dev-123-g1234567\"",
-                "__has_include(<freertos/FreeRTOS.h>)",
-                "__has_include(<freertos/FreeRTOSConfig.h>)"
+                "CONFIG_ZB_ZCZR",
+                "ZB_ZGPD_ROLE",
+                "CONFIG_ZB_GP_ENABLED"
             ],
-            "compilerPath": "/usr/bin/g++",
-            "cStandard": "c17",
-            "cppStandard": "gnu++17",
-            "intelliSenseMode": "linux-clang-x64",
-            "compileCommands": [
-                "./build/compile_commands.json"
-            ]
+            "compilerPath": "/home/chris/.espressif/tools/riscv32-esp-elf/esp-14.2.0_20241119/riscv32-esp-elf/bin/riscv32-esp-elf-gcc",
+            "cStandard": "c11",
+            "cppStandard": "c++17",
+            "intelliSenseMode": "gcc-x64",
+            "compileCommands": "${workspaceFolder}/build/compile_commands.json",
+            "browse": {
+                "path": [
+                    "${workspaceFolder}",
+                    "${env:IDF_PATH}/components",
+                    "${workspaceFolder}/managed_components"
+                ],
+                "limitSymbolsToIncludedHeaders": false
+            }
         }
     ],
     "version": 4

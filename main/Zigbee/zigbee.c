@@ -88,7 +88,7 @@ void start_commissioning(void)
     esp_zb_bdb_start_top_level_commissioning(ESP_ZB_BDB_NETWORK_STEERING);
 }
 
-void esp_zb_app_signal_handler(esp_zb_app_signal_t *signal_struct)
+void zigbee_signal_handler(esp_zb_app_signal_t *signal_struct)
 {
     uint32_t *p_sg_p = signal_struct->p_app_signal;
     esp_zb_app_signal_type_t sig_type = *p_sg_p;

@@ -48,7 +48,13 @@ static bool g_presence_detected = false; // Global presence state
 #error Define ZB_COORDINATOR_ROLE in idf.py menuconfig to compile thermostat source code.
 #endif
 
+//this exact function name MUST remain in this file
+// it is used by the zigbee library to call the signal handler
 
+void esp_zb_app_signal_handler(esp_zb_app_signal_t *signal_struct)
+{
+    zigbee_signal_handler(signal_struct);
+}
 
 
 // read the temp sensor function
