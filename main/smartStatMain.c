@@ -19,6 +19,7 @@
 //zigbee headers
 #include "sensors.h"
 #include "Zigbee/zigbee.h"
+#include "Buttons/button.h"
 
 
 
@@ -399,9 +400,19 @@ void hmmd_read_task(void *arg)
     }
 }
 
+
+// Callback function for button press
+static void button_pressed_cb(void)
+{
+    ESP_LOGI(TAG, "Button pressed!");
+    // We'll add network control logic here later
+}
+
 void app_main(void)
 {
-
+  // Initialize button
+  ESP_ERROR_CHECK(button_init());
+  button_register_callback(button_pressed_cb);
 
     esp_zb_platform_config_t config = {
         .radio_config = ESP_ZB_DEFAULT_RADIO_CONFIG(),
@@ -420,18 +431,18 @@ void app_main(void)
     Lvgl_smart_stat_ui();// Create LVGL UI elements/start ui
 
     // Create Zigbee main task
-    xTaskCreate(esp_zb_task, "Zigbee_main", 4096, NULL, 5, NULL);
+    // xTaskCreate(esp_zb_task, "Zigbee_main", 4096, NULL, 5, NULL);
 
     // Create DHT sensor monitoring task
     // xTaskCreate(dht_sensor_task, "DHT_sensor", 2048, NULL, 4, NULL);
 
     //xTaskCreate(TaskFunction_t functionname, const char * const pcName, uint32_t usStackDepth, void *pvParameters, UBaseType_t uxPriority, TaskHandle_t *pvCreatedTask); // Create a task
-    xTaskCreate(lvgl_task, "lvgl_task", 8192, NULL, 6, NULL); // Create LVGL task
-    ESP_LOGI(TAG, "Creating HMMD read task...");
-    esp_err_t ret = xTaskCreate(hmmd_read_task, "hmmd_read_task", 4096, NULL, 7, NULL);
-    if (ret != pdPASS) {
-        ESP_LOGE(TAG, "Failed to create HMMD read task");
-    } else {
-        ESP_LOGI(TAG, "HMMD read task created successfully");
-    }
+    // xTaskCreate(lvgl_task, "lvgl_task", 8192, NULL, 6, NULL); // Create LVGL task
+    // ESP_LOGI(TAG, "Creating HMMD read task...");
+    // esp_err_t ret = xTaskCreate(hmmd_read_task, "hmmd_read_task", 4096, NULL, 7, NULL);
+    // if (ret != pdPASS) {
+    //     ESP_LOGE(TAG, "Failed to create HMMD read task");
+    // } else {
+    //     ESP_LOGI(TAG, "HMMD read task created successfully");
+    // }
 }

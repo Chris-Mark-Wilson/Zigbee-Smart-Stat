@@ -7,6 +7,7 @@ idf_component_register(
     "LVGL_UI/LVGL_smart_stat_ui.c"
     "Zigbee/zigbee.c"
     "Sensors/sensors.c"
+     "Buttons/button.c"
     INCLUDE_DIRS 
     "./LCD_Driver/Vernon_ST7789T" 
     "./LCD_Driver" 
@@ -14,6 +15,7 @@ idf_component_register(
     "./LVGL_UI" 
     "./Zigbee"
     "./Sensors"
+    "./Buttons"
     "." 
   
    
