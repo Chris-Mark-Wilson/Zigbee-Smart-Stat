@@ -3,6 +3,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/queue.h"
+#include "esp_timer.h"
 
 static const char *TAG = "BUTTON";
 static button_callback_t button_callback = NULL;
@@ -22,18 +23,32 @@ static void button_task(void *arg)
 {
     uint32_t gpio_num;
     TickType_t last_press_time = 0;
+    int64_t press_start = 0;
+    bool is_pressed = false;
     
     while(1) {
         if(xQueueReceive(button_evt_queue, &gpio_num, portMAX_DELAY)) {
             TickType_t current_time = xTaskGetTickCount();
             
-            // Debounce check
-            if((current_time - last_press_time) >= pdMS_TO_TICKS(DEBOUNCE_TIME_MS)) {
-                // Additional verification of button state
-                if(gpio_get_level(gpio_num) == 0) { // Active LOW with pull-up
-                    ESP_LOGI(TAG, "Button pressed (GPIO %d)", gpio_num);
-                    if(button_callback) {
-                        button_callback();
+            // Debounce check - reduced to 50ms for better responsiveness
+            if((current_time - last_press_time) >= pdMS_TO_TICKS(50)) {
+                int level = gpio_get_level(gpio_num);
+                
+                if (level == 0 && !is_pressed) { // Button pressed
+                    is_pressed = true;
+                    press_start = esp_timer_get_time() / 1000;
+                    ESP_LOGI(TAG, "Button pressed");
+                }
+                else if (level == 1 && is_pressed) { // Button released
+                    is_pressed = false;
+                    int64_t press_duration = (esp_timer_get_time() / 1000) - press_start;
+                    
+                    if (press_duration >= LONG_PRESS_THRESHOLD_MS) {
+                        ESP_LOGI(TAG, "Long press detected (%lld ms)", press_duration);
+                        if (button_callback) button_callback(BUTTON_LONG_PRESS);
+                    } else {
+                        ESP_LOGI(TAG, "Short press detected (%lld ms)", press_duration);
+                        if (button_callback) button_callback(BUTTON_RELEASED);
                     }
                 }
                 last_press_time = current_time;
@@ -57,7 +72,7 @@ esp_err_t button_init(void)
         .mode = GPIO_MODE_INPUT,
         .pull_up_en = GPIO_PULLUP_ENABLE,    // Enable pull-up
         .pull_down_en = GPIO_PULLDOWN_DISABLE,
-        .intr_type = GPIO_INTR_NEGEDGE,      // Interrupt on falling edge
+        .intr_type = GPIO_INTR_ANYEDGE,      // Changed to detect both edges
     };
 
     esp_err_t ret = gpio_config(&io_conf);
@@ -95,6 +110,12 @@ bool button_is_pressed(void)
     return (gpio_get_level(NETWORK_CONTROL_BTN_PIN) == 0);
 }
 
+// Callback function for button press
+static void button_pressed_cb(void)
+{
+    ESP_LOGI(TAG, "Button pressed!");
+    // We'll add network control logic here later
+}
 void button_register_callback(button_callback_t callback)
 {
     button_callback = callback;

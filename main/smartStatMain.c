@@ -1,6 +1,3 @@
-
-
-
 #include "esp_zb_thermostat.h"
 #include "switch_driver.h"
 #include "dht.h"
@@ -12,7 +9,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 // #include "ha/esp_zigbee_ha_standard.h"
-#include "esp_timer.h"
+
 //lcd headers
 #include "ST7789.h"
 #include "LVGL_smart_stat_ui.h"
@@ -44,6 +41,8 @@ static uint8_t g_presence_counter = 0;   // Counter for debouncing
 static bool g_last_raw_presence = false; // Last raw reading
 
 static bool g_presence_detected = false; // Global presence state
+
+
 
 #if defined ZB_ED_ROLE
 #error Define ZB_COORDINATOR_ROLE in idf.py menuconfig to compile thermostat source code.
@@ -337,23 +336,17 @@ static void dht_sensor_task(void *pvParameters)
 
 static void esp_zb_task(void *pvParameters)
 {
-    // 1. Initialize Zigbee stack as Coordinator
+    // Initialize Zigbee stack as Coordinator
     esp_zb_cfg_t zb_nwk_cfg = ESP_ZB_ZC_CONFIG();
     esp_zb_init(&zb_nwk_cfg);
 
-    // 2. Register signal handler for Zigbee stack events
-    // esp_zb_core_action_handler_register(zigbee_signal_handler);
-
-
-    // esp_zb_core_action_handler_register(zigbee_core_action_handler);
-
-    // 4. Set channel mask for forming the Zigbee network
+    // Set channel mask
     esp_zb_set_primary_network_channel_set(ESP_ZB_PRIMARY_CHANNEL_MASK);
 
-    // 5. Start the Zigbee stack
-    ESP_ERROR_CHECK(esp_zb_start(false)); // false = not auto-forming network, just starting stack
+    // Start Zigbee stack with autostart
+    ESP_ERROR_CHECK(esp_zb_start(true));  // Changed to true for autostart
 
-    // 6. Enter the Zigbee main loop
+    // Enter Zigbee main loop
     esp_zb_stack_main_loop();
 }
 
@@ -401,11 +394,32 @@ void hmmd_read_task(void *arg)
 }
 
 
+
 // Callback function for button press
-static void button_pressed_cb(void)
+static void button_pressed_cb(button_event_t event)
 {
-    ESP_LOGI(TAG, "Button pressed!");
-    // We'll add network control logic here later
+    switch (event) {
+        case BUTTON_PRESSED:
+            // Button just pressed - no action yet
+            break;
+            
+        case BUTTON_RELEASED:
+            // Short press - toggle network
+            if (is_network_open()) {
+                ESP_LOGI(TAG, "Closing network on button press");
+                close_network();
+            } else {
+                ESP_LOGI(TAG, "Opening network on button press");
+                open_network(180);
+            }
+            break;
+            
+        case BUTTON_LONG_PRESS:
+            ESP_LOGI(TAG, "Long press detected - clearing NVS");
+            clear_zigbee_nvs();
+            esp_restart();
+            break;
+    }
 }
 
 void app_main(void)
@@ -431,7 +445,7 @@ void app_main(void)
     Lvgl_smart_stat_ui();// Create LVGL UI elements/start ui
 
     // Create Zigbee main task
-    // xTaskCreate(esp_zb_task, "Zigbee_main", 4096, NULL, 5, NULL);
+    xTaskCreate(esp_zb_task, "Zigbee_main", 4096, NULL, 5, NULL);
 
     // Create DHT sensor monitoring task
     // xTaskCreate(dht_sensor_task, "DHT_sensor", 2048, NULL, 4, NULL);

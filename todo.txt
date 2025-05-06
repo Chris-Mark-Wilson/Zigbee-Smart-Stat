@@ -1,0 +1,11 @@
+boot
+check nvs for devices, if so load devices
+if no nvs devices open network
+once found add devices to nvs and authorise
+
+button long press clears nvs
+button short press closes network
+
+button short press when network is closed reopens network -
+need to change this so it toggles screens if network isnt open
+
