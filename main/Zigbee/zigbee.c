@@ -1,474 +1,155 @@
-#include "ha/esp_zigbee_ha_standard.h"
-#include "esp_check.h"
-#include "esp_zb_thermostat.h"
-#include "switch_driver.h"
-#include "esp_log.h"
+#include "nvs.h"
+#include "nvs_flash.h"
+#include "zigbee.h"
 
-#define ARRAY_LENTH(arr) (sizeof(arr) / sizeof(arr[0]))
+// macros for nvs storage
+#define MAX_DEVICES 5
+#define NVS_NAMESPACE "zigbee"
+#define NVS_KEY_FORMAT "dev%d"
 
-
-
-typedef struct temp_sensor_device_params_s
+typedef enum
 {
-    esp_zb_ieee_addr_t ieee_addr;
-    uint8_t endpoint;
+    DEVICE_TRV,
+    DEVICE_WINDOW_SENSOR
+} device_type_t;
+typedef struct
+{
+    device_type_t type;
     uint16_t short_addr;
-} temp_sensor_device_params_t;
+    uint8_t endpoint;
+} zigbee_device_t;
 
-static temp_sensor_device_params_t temp_sensor;
+zigbee_device_t stored_devices[MAX_DEVICES];
+static int stored_device_count = 0;
 
-static switch_func_pair_t button_func_pair[] = {
-    {GPIO_INPUT_IO_TOGGLE_SWITCH, SWITCH_ONOFF_TOGGLE_CONTROL}};
+static const char *TAG = "ZIGBEE";
 
-//variables for zb signal and attribute handlers
-    static float zb_s16_to_temperature(int16_t value)
+bool nvs_check_for_paired_devices()
 {
-    return 1.0 * value / 100;
-}
-typedef struct zbstring_s
-{
-    uint8_t len;
-    char data[];
-} 
-ESP_ZB_PACKED_STRUCT
-    zbstring_t;
-
-
-static const char *TAG = "ZIGBEE STACK";
-
-
-
-// Function to start the BDB commissioning process
-// This function is called when the device starts up or reboots
-// It initiates the commissioning process based on the mode mask provided
-// The mode mask can include options like network formation, steering, etc.
-// The function is called in the context of the Zigbee stack
-//bdb means base device behavior
- void bdb_start_top_level_commissioning_cb(uint8_t mode_mask)
-{
-    ESP_RETURN_ON_FALSE(esp_zb_bdb_start_top_level_commissioning(mode_mask) == ESP_OK, ,
-                        TAG, "Failed to start Zigbee bdb commissioning");
-}
-
-
-
-
-
-// Function to find the TRV device
-// This function is called when a new device is discovered
-// It sends a ZDO match descriptor request to the discovered device
-// The function takes the device address and endpoint as parameters
-// The user context is used to pass additional information
-// This function is called when the TRV device is found
-// It logs the address and endpoint of the found device
-// It also stores the device information in a global structure
-
-void user_find_cb(esp_zb_zdp_status_t zdo_status, uint16_t peer_addr, uint8_t peer_endpoint, void *user_ctx)
-{
-    if (zdo_status == ESP_ZB_ZDP_STATUS_SUCCESS)
+    nvs_handle_t handle;
+    esp_err_t err = nvs_open("zigbee", NVS_READONLY, &handle);
+    if (err != ESP_OK)
     {
-        ESP_LOGI(TAG, "[TRV] 🔍 Found TRV device at address 0x%04x, endpoint %d", peer_addr, peer_endpoint);
-        /* Store the information of the remote device */
-        temp_sensor_device_params_t *sensor = (temp_sensor_device_params_t *)user_ctx;
-        sensor->endpoint = peer_endpoint;
-        sensor->short_addr = peer_addr;
-        esp_zb_ieee_address_by_short(sensor->short_addr, sensor->ieee_addr);
-
-        // Additional logging to show successful TRV discovery
-        ESP_LOGI(TAG, "[TRV] 🎯 TRV registered successfully - starting binding process");
-
-        /* Existing binding code... */
+        return false;
     }
-    else
-    {
-        ESP_LOGW(TAG, "[TRV] ❌ Failed to find TRV device (status: %d)", zdo_status);
-    }
+
+    uint32_t count = 0;
+    err = nvs_get_u32(handle, "dev_count", &count);
+    nvs_close(handle);
+
+    return (err == ESP_OK && count > 0);
 }
 
-
-//function to find the temperature sensor on the trv
- void find_temperature_sensor(esp_zb_zdo_match_desc_req_param_t *param, esp_zb_zdo_match_desc_callback_t user_cb, void *user_ctx)
+void load_devices_from_nvs()
 {
-    uint16_t cluster_list[] = {ESP_ZB_ZCL_CLUSTER_ID_TEMP_MEASUREMENT};
-    param->profile_id = ESP_ZB_AF_HA_PROFILE_ID;
-    param->num_in_clusters = 1;
-    param->num_out_clusters = 0;
-    param->cluster_list = cluster_list;
-    esp_zb_zdo_match_cluster(param, user_cb, (void *)&temp_sensor);
-}
-
-//handle button events
-// This function is called when a button event occurs
-// It checks the type of button event and performs the corresponding action
- void esp_app_buttons_handler(switch_func_pair_t *button_func_pair)
-{
-    if (button_func_pair->func == SWITCH_ONOFF_TOGGLE_CONTROL)
+    nvs_handle_t handle;
+    esp_err_t err = nvs_open("zigbee", NVS_READONLY, &handle);
+    if (err != ESP_OK)
     {
-        /* Send "read attributes" command to the bound sensor */
-        esp_zb_zcl_read_attr_cmd_t read_req = {0};
-        read_req.address_mode = ESP_ZB_APS_ADDR_MODE_DST_ADDR_ENDP_NOT_PRESENT;
-        read_req.zcl_basic_cmd.src_endpoint = HA_THERMOSTAT_ENDPOINT;
-        read_req.clusterID = ESP_ZB_ZCL_CLUSTER_ID_TEMP_MEASUREMENT;
-
-        uint16_t attributes[] = {
-            ESP_ZB_ZCL_ATTR_TEMP_MEASUREMENT_VALUE_ID,
-            ESP_ZB_ZCL_ATTR_TEMP_MEASUREMENT_MIN_VALUE_ID,
-            ESP_ZB_ZCL_ATTR_TEMP_MEASUREMENT_MAX_VALUE_ID,
-            ESP_ZB_ZCL_ATTR_TEMP_MEASUREMENT_TOLERANCE_ID};
-        read_req.attr_number = ARRAY_LENTH(attributes);
-        read_req.attr_field = attributes;
-
-        /* Send "configure report attribute" command to the bound sensor */
-        esp_zb_zcl_config_report_cmd_t report_cmd = {0};
-        report_cmd.address_mode = ESP_ZB_APS_ADDR_MODE_DST_ADDR_ENDP_NOT_PRESENT;
-        report_cmd.zcl_basic_cmd.src_endpoint = HA_THERMOSTAT_ENDPOINT;
-        report_cmd.clusterID = ESP_ZB_ZCL_CLUSTER_ID_TEMP_MEASUREMENT;
-
-        int16_t report_change = 200; /* report on each 2 degree changes */
-        esp_zb_zcl_config_report_record_t records[] = {
-            {
-                .direction = ESP_ZB_ZCL_CMD_DIRECTION_TO_SRV,
-                .attributeID = ESP_ZB_ZCL_ATTR_TEMP_MEASUREMENT_VALUE_ID,
-                .attrType = ESP_ZB_ZCL_ATTR_TYPE_S16,
-                .min_interval = 0,
-                .max_interval = 10,
-                .reportable_change = &report_change,
-            },
-        };
-        report_cmd.record_number = ARRAY_LENTH(records);
-        report_cmd.record_field = records;
-
-        esp_zb_lock_acquire(portMAX_DELAY);
-        esp_zb_zcl_config_report_cmd_req(&report_cmd);
-        esp_zb_lock_release();
-        ESP_EARLY_LOGI(TAG, "Send 'configure reporting' command");
-
-        esp_zb_lock_acquire(portMAX_DELAY);
-        esp_zb_zcl_read_attr_cmd_req(&read_req);
-        esp_zb_lock_release();
-        ESP_EARLY_LOGI(TAG, "Send 'read attributes' command");
+        ESP_LOGW("NVS", "Failed to open NVS for reading");
+        return;
     }
-}
 
-// Function to initialize the switch driver
-// This function is called to set up the switch driver
-// It initializes the switch driver with the button function pair and callback
-// It also sets up the GPIO for the switch input
-static esp_err_t deferred_driver_init(void)
-{
-    static bool is_inited = false;
-    if (!is_inited)
+    uint32_t count = 0;
+    err = nvs_get_u32(handle, "dev_count", &count);
+    if (err != ESP_OK || count > MAX_DEVICES)
     {
-        ESP_RETURN_ON_FALSE(switch_driver_init(button_func_pair, PAIR_SIZE(button_func_pair), esp_app_buttons_handler),
-                            ESP_FAIL, TAG, "Failed to initialize switch driver");
-        is_inited = true;
+        ESP_LOGW("NVS", "Invalid or missing device count");
+        nvs_close(handle);
+        return;
     }
-    return is_inited ? ESP_OK : ESP_FAIL;
+
+    for (unsigned int i = 0; i < count; i++)
+    {
+        char key[16];
+        snprintf(key, sizeof(key), "dev_%u", i);
+        zigbee_device_t dev;
+
+        size_t len = sizeof(dev);
+        err = nvs_get_blob(handle, key, &dev, &len);
+        if (err == ESP_OK)
+        {
+            stored_devices[i] = dev;
+            ESP_LOGI("NVS", "Loaded device %u: type=%d addr=0x%04x ep=%d",
+                     i, dev.type, dev.short_addr, dev.endpoint);
+        }
+        else
+        {
+            ESP_LOGW("NVS", "Failed to load device %u", i);
+        }
+    }
+
+    stored_device_count = count;
+    nvs_close(handle);
 }
 
+void start_commissioning(void)
+{
+    esp_zb_bdb_start_top_level_commissioning(ESP_ZB_BDB_NETWORK_STEERING);
+}
 
-// Function to handle Zigbee application signals
-// This function is called when a Zigbee application signal is received
-// It processes the signal based on its type and performs the corresponding action
-// It handles various signals such as device announcement, network formation, and steering
 void esp_zb_app_signal_handler(esp_zb_app_signal_t *signal_struct)
 {
     uint32_t *p_sg_p = signal_struct->p_app_signal;
-    esp_err_t err_status = signal_struct->esp_err_status;
     esp_zb_app_signal_type_t sig_type = *p_sg_p;
+
     esp_zb_zdo_signal_device_annce_params_t *dev_annce_params = NULL;
+
     switch (sig_type)
     {
     case ESP_ZB_ZDO_SIGNAL_SKIP_STARTUP:
-        ESP_LOGI(TAG, "Initialize Zigbee stack");
-        esp_zb_bdb_start_top_level_commissioning(ESP_ZB_BDB_MODE_INITIALIZATION);
+        ESP_LOGI(TAG, "Zigbee stack initialized, skipping default startup.");
+
+        if (nvs_check_for_paired_devices())
+        {
+            ESP_LOGI(TAG, "Paired device config found. Resuming control logic.");
+            load_devices_from_nvs();
+            // Optionally trigger discovery of devices to confirm presence
+        }
+        else
+        {
+            ESP_LOGI(TAG, "No paired devices found. Starting commissioning...");
+            start_commissioning(); // calls esp_zb_bdb_start_top_level_commissioning
+        }
         break;
+
     case ESP_ZB_BDB_SIGNAL_DEVICE_FIRST_START:
+        ESP_LOGI(TAG, "Device started forming the network.");
+        break;
+
     case ESP_ZB_BDB_SIGNAL_DEVICE_REBOOT:
-        if (err_status == ESP_OK)
-        {
-            ESP_LOGI(TAG, "Deferred driver initialization %s", deferred_driver_init() ? "failed" : "successful");
-            ESP_LOGI(TAG, "Device started up in%s factory-reset mode", esp_zb_bdb_is_factory_new() ? "" : " non");
-            if (esp_zb_bdb_is_factory_new())
-            {
-                ESP_LOGI(TAG, "Start network formation");
-                esp_zb_bdb_start_top_level_commissioning(ESP_ZB_BDB_MODE_NETWORK_FORMATION);
-            }
-            else
-            {
-                esp_zb_bdb_open_network(180);
-                ESP_LOGI(TAG, "Device rebooted");
-            }
-        }
-        else
-        {
-            ESP_LOGW(TAG, "%s failed with status: %s, retrying", esp_zb_zdo_signal_to_string(sig_type),
-                     esp_err_to_name(err_status));
-            esp_zb_scheduler_alarm((esp_zb_callback_t)bdb_start_top_level_commissioning_cb,
-                                   ESP_ZB_BDB_MODE_INITIALIZATION, 1000);
-        }
+        ESP_LOGI(TAG, "Rejoined after reboot.");
         break;
-    case ESP_ZB_BDB_SIGNAL_FORMATION:
-        if (err_status == ESP_OK)
-        {
-            esp_zb_ieee_addr_t extended_pan_id;
-            esp_zb_get_extended_pan_id(extended_pan_id);
-            ESP_LOGI(TAG, "Formed network successfully (Extended PAN ID: %02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x, PAN ID: 0x%04hx, Channel:%d, Short Address: 0x%04hx)",
-                     extended_pan_id[7], extended_pan_id[6], extended_pan_id[5], extended_pan_id[4],
-                     extended_pan_id[3], extended_pan_id[2], extended_pan_id[1], extended_pan_id[0],
-                     esp_zb_get_pan_id(), esp_zb_get_current_channel(), esp_zb_get_short_address());
-            esp_zb_bdb_start_top_level_commissioning(ESP_ZB_BDB_MODE_NETWORK_STEERING);
-        }
-        else
-        {
-            ESP_LOGI(TAG, "Restart network formation (status: %s)", esp_err_to_name(err_status));
-            esp_zb_scheduler_alarm((esp_zb_callback_t)bdb_start_top_level_commissioning_cb, ESP_ZB_BDB_MODE_NETWORK_FORMATION, 1000);
-        }
-        break;
-    case ESP_ZB_BDB_SIGNAL_STEERING:
-        if (err_status == ESP_OK)
-        {
-            ESP_LOGI(TAG, "Network steering started");
-        }
-        break;
+
     case ESP_ZB_ZDO_SIGNAL_DEVICE_ANNCE:
         dev_annce_params = (esp_zb_zdo_signal_device_annce_params_t *)esp_zb_app_signal_get_params(p_sg_p);
         ESP_LOGI(TAG, "New device commissioned or rejoined (short: 0x%04hx)", dev_annce_params->device_short_addr);
         esp_zb_zdo_match_desc_req_param_t cmd_req;
         cmd_req.dst_nwk_addr = dev_annce_params->device_short_addr;
         cmd_req.addr_of_interest = dev_annce_params->device_short_addr;
-        find_temperature_sensor(&cmd_req, user_find_cb, NULL);
+        ESP_LOGI(TAG, "Sending Match Descriptor Request to device 0x%04hx", cmd_req.dst_nwk_addr);
+
         break;
-    case ESP_ZB_NWK_SIGNAL_PERMIT_JOIN_STATUS:
-        if (err_status == ESP_OK)
+
+    case ESP_ZB_BDB_SIGNAL_STEERING:
+        if (signal_struct->esp_err_status == ESP_OK)
         {
-            if (*(uint8_t *)esp_zb_app_signal_get_params(p_sg_p))
-            {
-                ESP_LOGI(TAG, "Network(0x%04hx) is open for %d seconds", esp_zb_get_pan_id(), *(uint8_t *)esp_zb_app_signal_get_params(p_sg_p));
-            }
-            else
-            {
-                ESP_LOGW(TAG, "Network(0x%04hx) closed, devices joining not allowed.", esp_zb_get_pan_id());
-            }
+            ESP_LOGI(TAG, "Device joined successfully.");
+        }
+        else
+        {
+            ESP_LOGW(TAG, "Device join failed or timed out.");
         }
         break;
+
+    case ESP_ZB_ZDO_SIGNAL_LEAVE:
+        ESP_LOGW(TAG, "A device has left the network.");
+        break;
+
     default:
-        ESP_LOGI(TAG, "ZDO signal: %s (0x%x), status: %s", esp_zb_zdo_signal_to_string(sig_type), sig_type,
-                 esp_err_to_name(err_status));
+        ESP_LOGW(TAG, "Unhandled Zigbee signal: %d", sig_type);
         break;
     }
+
+
 }
-
- void esp_app_zb_attribute_handler(uint16_t cluster_id, const esp_zb_zcl_attribute_t *attribute)
-{
-    /* Basic cluster attributes */
-    if (cluster_id == ESP_ZB_ZCL_CLUSTER_ID_BASIC)
-    {
-        if (attribute->id == ESP_ZB_ZCL_ATTR_BASIC_MANUFACTURER_NAME_ID &&
-            attribute->data.type == ESP_ZB_ZCL_ATTR_TYPE_CHAR_STRING &&
-            attribute->data.value)
-        {
-            zbstring_t *zbstr = (zbstring_t *)attribute->data.value;
-            char *string = (char *)malloc(zbstr->len + 1);
-            memcpy(string, zbstr->data, zbstr->len);
-            string[zbstr->len] = '\0';
-            ESP_LOGI(TAG, "Peer Manufacturer is \"%s\"", string);
-            free(string);
-        }
-        if (attribute->id == ESP_ZB_ZCL_ATTR_BASIC_MODEL_IDENTIFIER_ID &&
-            attribute->data.type == ESP_ZB_ZCL_ATTR_TYPE_CHAR_STRING &&
-            attribute->data.value)
-        {
-            zbstring_t *zbstr = (zbstring_t *)attribute->data.value;
-            char *string = (char *)malloc(zbstr->len + 1);
-            memcpy(string, zbstr->data, zbstr->len);
-            string[zbstr->len] = '\0';
-            ESP_LOGI(TAG, "Peer Model is \"%s\"", string);
-            free(string);
-        }
-    }
-
-    /* Temperature Measurement cluster attributes */
-    if (cluster_id == ESP_ZB_ZCL_CLUSTER_ID_TEMP_MEASUREMENT)
-    {
-        if (attribute->id == ESP_ZB_ZCL_ATTR_TEMP_MEASUREMENT_VALUE_ID &&
-            attribute->data.type == ESP_ZB_ZCL_ATTR_TYPE_S16)
-        {
-            int16_t value = attribute->data.value ? *(int16_t *)attribute->data.value : 0;
-            ESP_LOGI(TAG, "Measured Value is %.2f degrees Celsius", zb_s16_to_temperature(value));
-        }
-        if (attribute->id == ESP_ZB_ZCL_ATTR_TEMP_MEASUREMENT_MIN_VALUE_ID &&
-            attribute->data.type == ESP_ZB_ZCL_ATTR_TYPE_S16)
-        {
-            int16_t min_value = attribute->data.value ? *(int16_t *)attribute->data.value : 0;
-            ESP_LOGI(TAG, "Min Measured Value is %.2f degrees Celsius", zb_s16_to_temperature(min_value));
-        }
-        if (attribute->id == ESP_ZB_ZCL_ATTR_TEMP_MEASUREMENT_MAX_VALUE_ID &&
-            attribute->data.type == ESP_ZB_ZCL_ATTR_TYPE_S16)
-        {
-            int16_t max_value = attribute->data.value ? *(int16_t *)attribute->data.value : 0;
-            ESP_LOGI(TAG, "Max Measured Value is %.2f degrees Celsius", zb_s16_to_temperature(max_value));
-        }
-        if (attribute->id == ESP_ZB_ZCL_ATTR_TEMP_MEASUREMENT_TOLERANCE_ID &&
-            attribute->data.type == ESP_ZB_ZCL_ATTR_TYPE_U16)
-        {
-            uint16_t tolerance = attribute->data.value ? *(uint16_t *)attribute->data.value : 0;
-            ESP_LOGI(TAG, "Tolerance is %.2f degrees Celsius", 1.0 * tolerance / 100);
-        }
-    }
-}
-
-// Function to handle attribute reporting
-// This function is called when an attribute report is received
-// It checks the status of the report and logs the received data
-// It also calls the attribute handler to process the attribute data
-static esp_err_t zb_attribute_reporting_handler(const esp_zb_zcl_report_attr_message_t *message)
-{
-    ESP_RETURN_ON_FALSE(message, ESP_FAIL, TAG, "Empty message");
-    ESP_RETURN_ON_FALSE(message->status == ESP_ZB_ZCL_STATUS_SUCCESS, ESP_ERR_INVALID_ARG, TAG, "Received message: error status(%d)",
-                        message->status);
-    ESP_LOGI(TAG, "Received report from address(0x%x) src endpoint(%d) to dst endpoint(%d) cluster(0x%x)",
-             message->src_address.u.short_addr, message->src_endpoint,
-             message->dst_endpoint, message->cluster);
-    esp_app_zb_attribute_handler(message->cluster, &message->attribute);
-    return ESP_OK;
-}
-
-
-//function to handle read attribute response
-// This function is called when a read attribute response is received
-// It checks the status of the response and logs the received data
-// It also calls the attribute handler to process the attribute data
-static esp_err_t zb_read_attr_resp_handler(const esp_zb_zcl_cmd_read_attr_resp_message_t *message)
-{
-    ESP_RETURN_ON_FALSE(message, ESP_FAIL, TAG, "Empty message");
-    ESP_RETURN_ON_FALSE(message->info.status == ESP_ZB_ZCL_STATUS_SUCCESS, ESP_ERR_INVALID_ARG, TAG, "Received message: error status(%d)",
-                        message->info.status);
-
-    ESP_LOGI(TAG, "Read attribute response: from address(0x%x) src endpoint(%d) to dst endpoint(%d) cluster(0x%x)",
-             message->info.src_address.u.short_addr, message->info.src_endpoint,
-             message->info.dst_endpoint, message->info.cluster);
-
-    esp_zb_zcl_read_attr_resp_variable_t *variable = message->variables;
-    while (variable)
-    {
-        ESP_LOGI(TAG, "Read attribute response: status(%d), cluster(0x%x), attribute(0x%x), type(0x%x), value(%d)",
-                 variable->status, message->info.cluster,
-                 variable->attribute.id, variable->attribute.data.type,
-                 variable->attribute.data.value ? *(uint8_t *)variable->attribute.data.value : 0);
-        if (variable->status == ESP_ZB_ZCL_STATUS_SUCCESS)
-        {
-            esp_app_zb_attribute_handler(message->info.cluster, &variable->attribute);
-        }
-
-        variable = variable->next;
-    }
-
-    return ESP_OK;
-}
-
-
-//function to handle configure report response
-// This function is called when a configure report response is received
-// It checks the status of the response and logs the received data
-// It also calls the attribute handler to process the attribute data
-static esp_err_t zb_configure_report_resp_handler(const esp_zb_zcl_cmd_config_report_resp_message_t *message)
-{
-    ESP_RETURN_ON_FALSE(message, ESP_FAIL, TAG, "Empty message");
-    ESP_RETURN_ON_FALSE(message->info.status == ESP_ZB_ZCL_STATUS_SUCCESS, ESP_ERR_INVALID_ARG, TAG, "Received message: error status(%d)",
-                        message->info.status);
-
-    esp_zb_zcl_config_report_resp_variable_t *variable = message->variables;
-    while (variable)
-    {
-        ESP_LOGI(TAG, "Configure report response: status(%d), cluster(0x%x), direction(0x%x), attribute(0x%x)",
-                 variable->status, message->info.cluster, variable->direction, variable->attribute_id);
-        variable = variable->next;
-    }
-
-    return ESP_OK;
-}
-
-
-//function to handle zb action
-// This function is called when a Zigbee action callback is received
-// It checks the callback ID and calls the corresponding handler function
-// It handles various actions such as attribute reporting, read attribute response, and configure report response
-// It returns the result of the handler function
-static esp_err_t zb_action_handler(esp_zb_core_action_callback_id_t callback_id, const void *message)
-{
-    esp_err_t ret = ESP_OK;
-    switch (callback_id)
-    {
-    case ESP_ZB_CORE_REPORT_ATTR_CB_ID:
-        ret = zb_attribute_reporting_handler((esp_zb_zcl_report_attr_message_t *)message);
-        break;
-    case ESP_ZB_CORE_CMD_READ_ATTR_RESP_CB_ID:
-        ret = zb_read_attr_resp_handler((esp_zb_zcl_cmd_read_attr_resp_message_t *)message);
-        break;
-    case ESP_ZB_CORE_CMD_REPORT_CONFIG_RESP_CB_ID:
-        ret = zb_configure_report_resp_handler((esp_zb_zcl_cmd_config_report_resp_message_t *)message);
-        break;
-    default:
-        ESP_LOGW(TAG, "Receive Zigbee action(0x%x) callback", callback_id);
-        break;
-    }
-    return ret;
-}
-
-
-// function to creat thermostat clusters
-// This function creates a cluster list for the thermostat device
-// It adds the basic, identify, and thermostat clusters to the list
-// It also adds the temperature measurement cluster for attribute reporting
-// It returns the created cluster list
-// This function is called when the thermostat device is created
-// It initializes the cluster list and adds the clusters based on the configuration
-static esp_zb_cluster_list_t *custom_thermostat_clusters_create(esp_zb_thermostat_cfg_t *thermostat)
-{
-    esp_zb_cluster_list_t *cluster_list = esp_zb_zcl_cluster_list_create();
-    esp_zb_attribute_list_t *basic_cluster = esp_zb_basic_cluster_create(&(thermostat->basic_cfg));
-    ESP_ERROR_CHECK(esp_zb_basic_cluster_add_attr(basic_cluster, ESP_ZB_ZCL_ATTR_BASIC_MANUFACTURER_NAME_ID, MANUFACTURER_NAME));
-    ESP_ERROR_CHECK(esp_zb_basic_cluster_add_attr(basic_cluster, ESP_ZB_ZCL_ATTR_BASIC_MODEL_IDENTIFIER_ID, MODEL_IDENTIFIER));
-    ESP_ERROR_CHECK(esp_zb_cluster_list_add_basic_cluster(cluster_list, basic_cluster, ESP_ZB_ZCL_CLUSTER_SERVER_ROLE));
-    ESP_ERROR_CHECK(esp_zb_cluster_list_add_identify_cluster(cluster_list, esp_zb_identify_cluster_create(&(thermostat->identify_cfg)), ESP_ZB_ZCL_CLUSTER_SERVER_ROLE));
-    ESP_ERROR_CHECK(esp_zb_cluster_list_add_identify_cluster(cluster_list, esp_zb_zcl_attr_list_create(ESP_ZB_ZCL_CLUSTER_ID_IDENTIFY), ESP_ZB_ZCL_CLUSTER_CLIENT_ROLE));
-    ESP_ERROR_CHECK(esp_zb_cluster_list_add_thermostat_cluster(cluster_list, esp_zb_thermostat_cluster_create(&(thermostat->thermostat_cfg)), ESP_ZB_ZCL_CLUSTER_SERVER_ROLE));
-    /* Add temperature measurement cluster for attribute reporting */
-    ESP_ERROR_CHECK(esp_zb_cluster_list_add_temperature_meas_cluster(cluster_list, esp_zb_temperature_meas_cluster_create(NULL), ESP_ZB_ZCL_CLUSTER_CLIENT_ROLE));
-    return cluster_list;
-}
-
-// function to create a thermostat endpoint
-// This function creates a thermostat endpoint with the specified endpoint ID
-// It initializes the endpoint configuration and adds the thermostat clusters to the endpoint
-// It returns the created endpoint list
-// This function is called when the thermostat device is created
-static esp_zb_ep_list_t *custom_thermostat_ep_create(uint8_t endpoint_id, esp_zb_thermostat_cfg_t *thermostat)
-{
-    esp_zb_ep_list_t *ep_list = esp_zb_ep_list_create();
-    esp_zb_endpoint_config_t endpoint_config = {
-        .endpoint = endpoint_id,
-        .app_profile_id = ESP_ZB_AF_HA_PROFILE_ID,
-        .app_device_id = ESP_ZB_HA_THERMOSTAT_DEVICE_ID,
-        .app_device_version = 0};
-    esp_zb_ep_list_add_ep(ep_list, custom_thermostat_clusters_create(thermostat), endpoint_config);
-    return ep_list;
-}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

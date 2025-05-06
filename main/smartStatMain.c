@@ -1,34 +1,24 @@
-/*
- * SPDX-FileCopyrightText: 2024 Espressif Systems (Shanghai) CO LTD
- *
- * SPDX-License-Identifier: CC0-1.0
- *
- * Zigbee HA_thermostat Example
- *
- * This example code is in the Public Domain (or CC0 licensed, at your option.)
- *
- * Unless required by applicable law or agreed to in writing, this
- * software is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
- * CONDITIONS OF ANY KIND, either express or implied.
- */
+
+
 
 #include "esp_zb_thermostat.h"
 #include "switch_driver.h"
 #include "dht.h"
 #include "string.h"
+#include "nvs.h"
 #include "nvs_flash.h"
 #include "esp_log.h"
 #include "esp_check.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
-#include "ha/esp_zigbee_ha_standard.h"
+// #include "ha/esp_zigbee_ha_standard.h"
 #include "esp_timer.h"
 //lcd headers
 #include "ST7789.h"
 #include "LVGL_smart_stat_ui.h"
 //zigbee headers
-#include "zigbee.h"
 #include "sensors.h"
+#include "Zigbee/zigbee.h"
 
 
 
@@ -42,8 +32,6 @@
 #define TRV_TEMP_MIN 5  // Minimum temperature (TRV OFF)
 
 
-static bool g_presence_detected = false; // Global presence state
-
 // Global temperature and humidity storage
 static float g_temperature = 0;
 static float g_humidity = 0;
@@ -54,9 +42,12 @@ static bool g_trv_is_on = false;         // Current TRV state
 static uint8_t g_presence_counter = 0;   // Counter for debouncing
 static bool g_last_raw_presence = false; // Last raw reading
 
+static bool g_presence_detected = false; // Global presence state
+
 #if defined ZB_ED_ROLE
 #error Define ZB_COORDINATOR_ROLE in idf.py menuconfig to compile thermostat source code.
 #endif
+
 
 
 
@@ -132,45 +123,45 @@ static esp_err_t read_rcwl_sensor(void)
 // Function to set TRV target temperature
 static void set_trv_temperature(uint8_t target_temp)
 {
-    int16_t target_temp_value = target_temp * 100; // Convert to centi-degrees
+    // int16_t target_temp_value = target_temp * 100; // Convert to centi-degrees
 
-    // Detailed connection status check with address info
-    if (temp_sensor.short_addr == 0)
-    {
-        ESP_LOGW(TAG, "[TRV] No valid TRV connection yet, skipping temperature command (target: %d°C)", target_temp);
-        return;
-    }
+    // // Detailed connection status check with address info
+    // if (temp_sensor.short_addr == 0)
+    // {
+    //     ESP_LOGW(TAG, "[TRV] No valid TRV connection yet, skipping temperature command (target: %d°C)", target_temp);
+    //     return;
+    // }
 
-    ESP_LOGI(TAG, "[TRV] Sending temperature command to TRV (addr: 0x%04x, ep: %d) → %d°C",
-             temp_sensor.short_addr, temp_sensor.endpoint, target_temp);
+    // ESP_LOGI(TAG, "[TRV] Sending temperature command to TRV (addr: 0x%04x, ep: %d) → %d°C",
+    //          temp_sensor.short_addr, temp_sensor.endpoint, target_temp);
 
-    esp_zb_zcl_write_attr_cmd_t write_req = {0};
-    write_req.address_mode = ESP_ZB_APS_ADDR_MODE_16_ENDP_PRESENT;
-    write_req.zcl_basic_cmd.src_endpoint = HA_THERMOSTAT_ENDPOINT;
-    write_req.zcl_basic_cmd.dst_endpoint = temp_sensor.endpoint;
-    write_req.zcl_basic_cmd.dst_addr_u.addr_short = temp_sensor.short_addr;
-    write_req.clusterID = ESP_ZB_ZCL_CLUSTER_ID_THERMOSTAT;
+    // esp_zb_zcl_write_attr_cmd_t write_req = {0};
+    // write_req.address_mode = ESP_ZB_APS_ADDR_MODE_16_ENDP_PRESENT;
+    // write_req.zcl_basic_cmd.src_endpoint = HA_THERMOSTAT_ENDPOINT;
+    // write_req.zcl_basic_cmd.dst_endpoint = temp_sensor.endpoint;
+    // write_req.zcl_basic_cmd.dst_addr_u.addr_short = temp_sensor.short_addr;
+    // write_req.clusterID = ESP_ZB_ZCL_CLUSTER_ID_THERMOSTAT;
 
-    esp_zb_zcl_attribute_t attr = {
-        .id = ESP_ZB_ZCL_ATTR_THERMOSTAT_OCCUPIED_HEATING_SETPOINT_ID,
-        .data.type = ESP_ZB_ZCL_ATTR_TYPE_S16,
-        .data.value = &target_temp_value};
+    // esp_zb_zcl_attribute_t attr = {
+    //     .id = ESP_ZB_ZCL_ATTR_THERMOSTAT_OCCUPIED_HEATING_SETPOINT_ID,
+    //     .data.type = ESP_ZB_ZCL_ATTR_TYPE_S16,
+    //     .data.value = &target_temp_value};
 
-    write_req.attr_field = &attr;
-    write_req.attr_number = 1;
+    // write_req.attr_field = &attr;
+    // write_req.attr_number = 1;
 
-    esp_zb_lock_acquire(portMAX_DELAY);
-    esp_err_t err = esp_zb_zcl_write_attr_cmd_req(&write_req);
-    esp_zb_lock_release();
+    // esp_zb_lock_acquire(portMAX_DELAY);
+    // esp_err_t err = esp_zb_zcl_write_attr_cmd_req(&write_req);
+    // esp_zb_lock_release();
 
-    if (err != ESP_OK)
-    {
-        ESP_LOGE(TAG, "[TRV] Failed to send temperature command: %s", esp_err_to_name(err));
-    }
-    else
-    {
-        ESP_LOGI(TAG, "[TRV] Temperature command sent successfully");
-    }
+    // if (err != ESP_OK)
+    // {
+    //     ESP_LOGE(TAG, "[TRV] Failed to send temperature command: %s", esp_err_to_name(err));
+    // }
+    // else
+    // {
+    //     ESP_LOGI(TAG, "[TRV] Temperature command sent successfully");
+    // }
 }
 // Function to turn TRV on
 static void turn_trv_on(const char *reason)
@@ -202,70 +193,70 @@ static void turn_trv_off(const char *reason)
     }
 }
 // Function to check if TRV is connected and available
-static bool is_trv_connected(void)
-{
-    bool connected = (temp_sensor.short_addr != 0);
-    return connected;
-}
+// static bool is_trv_connected(void)
+// {
+//     bool connected = (temp_sensor.short_addr != 0);
+//     return connected;
+// }
 
 // Control logic function
 static void evaluate_control_logic(void)
 {
-    int64_t current_time = esp_timer_get_time() / 1000; // Current time in milliseconds
-    int64_t time_since_last_presence = current_time - g_last_presence_time;
+    // int64_t current_time = esp_timer_get_time() / 1000; // Current time in milliseconds
+    // int64_t time_since_last_presence = current_time - g_last_presence_time;
 
-    // Update presence timestamp if currently detected
-    if (g_presence_detected)
-    {
-        g_last_presence_time = current_time;
-    }
+    // // Update presence timestamp if currently detected
+    // if (g_presence_detected)
+    // {
+    //     g_last_presence_time = current_time;
+    // }
 
-    // Check TRV connection status
-    bool trv_connected = is_trv_connected();
+    // // Check TRV connection status
+    // bool trv_connected = is_trv_connected();
 
-    // Log current system state
-    ESP_LOGI(TAG, "Status: Temp=%.1f°C | Presence: %s | TRV: %s | TRV Status: %s",
-             g_temperature,
-             g_presence_detected ? "YES" : "NO",
-             trv_connected ? "CONNECTED" : "NOT CONNECTED",
-             g_trv_is_on ? "ON" : "OFF");
+    // // Log current system state
+    // ESP_LOGI(TAG, "Status: Temp=%.1f°C | Presence: %s | TRV: %s | TRV Status: %s",
+    //          g_temperature,
+    //          g_presence_detected ? "YES" : "NO",
+    //          trv_connected ? "CONNECTED" : "NOT CONNECTED",
+    //          g_trv_is_on ? "ON" : "OFF");
 
-    // Don't attempt control logic if TRV not connected
-    if (!trv_connected)
-    {
-        ESP_LOGW(TAG, "[TRV] Cannot control TRV - not connected");
-        return;
-    }
+    // // Don't attempt control logic if TRV not connected
+    // if (!trv_connected)
+    // {
+    //     ESP_LOGW(TAG, "[TRV] Cannot control TRV - not connected");
+    //     return;
+    // }
 
-    // === Control logic based on the requirements ===
+    // // === Control logic based on the requirements ===
 
-    // Safety threshold - don't let temperature drop too low
-    if (g_temperature < MIN_SAFETY_TEMP)
-    {
-        turn_trv_on("Temperature below minimum safety threshold");
-        return;
-    }
+    // // Safety threshold - don't let temperature drop too low
+    // if (g_temperature < MIN_SAFETY_TEMP)
+    // {
+    //     turn_trv_on("Temperature below minimum safety threshold");
+    //     return;
+    // }
 
-    // Turn off TRV if temperature is above comfort level (even if presence is detected)
-    if (g_temperature >= COMFORT_TEMP)
-    {
-        turn_trv_off("Temperature above or at comfort threshold");
-        return;
-    }
+    // // Turn off TRV if temperature is above comfort level (even if presence is detected)
+    // if (g_temperature >= COMFORT_TEMP)
+    // {
+    //     turn_trv_off("Temperature above or at comfort threshold");
+    //     return;
+    // }
 
-    // Comfort control when presence detected and temperature below comfort level
-    if (g_presence_detected && g_temperature < COMFORT_TEMP)
-    {
-        turn_trv_on("Presence detected and temperature below comfort threshold");
-        return;
-    }
+    // // Comfort control when presence detected and temperature below comfort level
+    // if (g_presence_detected && g_temperature < COMFORT_TEMP)
+    // {
+    //     turn_trv_on("Presence detected and temperature below comfort threshold");
+    //     return;
+    // }
 
-    // Turn off if no presence for specified timeout
-    if (time_since_last_presence > PRESENCE_TIMEOUT_MS)
-    {
-        turn_trv_off("No presence detected for timeout period");
-        return;
-    }
+    // // Turn off if no presence for specified timeout
+    // if (time_since_last_presence > PRESENCE_TIMEOUT_MS)
+    // {
+    //     turn_trv_off("No presence detected for timeout period");
+    //     return;
+    // }
 } // Updated sensor task with control logic
 
 static void dht_sensor_task(void *pvParameters)
@@ -339,20 +330,23 @@ static void dht_sensor_task(void *pvParameters)
 
 static void esp_zb_task(void *pvParameters)
 {
-    /* Initialize Zigbee stack */
+    // 1. Initialize Zigbee stack as Coordinator
     esp_zb_cfg_t zb_nwk_cfg = ESP_ZB_ZC_CONFIG();
     esp_zb_init(&zb_nwk_cfg);
 
-    /* Create customized thermostat endpoint */
-    esp_zb_thermostat_cfg_t thermostat_cfg = ESP_ZB_DEFAULT_THERMOSTAT_CONFIG();
-    esp_zb_ep_list_t *esp_zb_thermostat_ep = custom_thermostat_ep_create(HA_THERMOSTAT_ENDPOINT, &thermostat_cfg);
+    // 2. Register signal handler for Zigbee stack events
+    // esp_zb_core_action_handler_register(zigbee_signal_handler);
 
-    /* Register the device */
-    esp_zb_device_register(esp_zb_thermostat_ep);
 
-    esp_zb_core_action_handler_register(zb_action_handler);
+    // esp_zb_core_action_handler_register(zigbee_core_action_handler);
+
+    // 4. Set channel mask for forming the Zigbee network
     esp_zb_set_primary_network_channel_set(ESP_ZB_PRIMARY_CHANNEL_MASK);
-    ESP_ERROR_CHECK(esp_zb_start(false));
+
+    // 5. Start the Zigbee stack
+    ESP_ERROR_CHECK(esp_zb_start(false)); // false = not auto-forming network, just starting stack
+
+    // 6. Enter the Zigbee main loop
     esp_zb_stack_main_loop();
 }
 
@@ -401,12 +395,14 @@ void hmmd_read_task(void *arg)
 
 void app_main(void)
 {
+
+
     esp_zb_platform_config_t config = {
         .radio_config = ESP_ZB_DEFAULT_RADIO_CONFIG(),
         .host_config = ESP_ZB_DEFAULT_HOST_CONFIG(),
     };
-    ESP_ERROR_CHECK(nvs_flash_init());
-    ESP_ERROR_CHECK(esp_zb_platform_config(&config));
+    ESP_ERROR_CHECK(nvs_flash_init());//init nvs flash, always first
+    ESP_ERROR_CHECK(esp_zb_platform_config(&config));//configure radio and host
 
     LCD_Init();   // Initialize LCD 
     LVGL_Init(); // Initialize LVGL library
@@ -415,13 +411,13 @@ void app_main(void)
 
     Lvgl_smart_stat_ui_close();  // Clean up any existing UI
 
-    Lvgl_smart_stat_ui();// Create LVGL UI elements
+    Lvgl_smart_stat_ui();// Create LVGL UI elements/start ui
 
     // Create Zigbee main task
     xTaskCreate(esp_zb_task, "Zigbee_main", 4096, NULL, 5, NULL);
 
     // Create DHT sensor monitoring task
-    xTaskCreate(dht_sensor_task, "DHT_sensor", 2048, NULL, 4, NULL);
+    // xTaskCreate(dht_sensor_task, "DHT_sensor", 2048, NULL, 4, NULL);
 
     //xTaskCreate(TaskFunction_t functionname, const char * const pcName, uint32_t usStackDepth, void *pvParameters, UBaseType_t uxPriority, TaskHandle_t *pvCreatedTask); // Create a task
     xTaskCreate(lvgl_task, "lvgl_task", 8192, NULL, 6, NULL); // Create LVGL task
