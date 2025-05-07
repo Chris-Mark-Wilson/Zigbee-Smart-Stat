@@ -9,6 +9,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/queue.h"
+
 // #include "ha/esp_zigbee_ha_standard.h"
 
 //lcd headers
@@ -418,12 +419,23 @@ static void button_pressed_cb(button_event_t event)
                 }
             }
             break;
+            case BUTTON_LONG_PRESS: {
+                ESP_LOGI(TAG, "Long press detected - leaving network and clearing NVS");
+                // First leave the network
+                esp_zb_zdo_mgmt_leave_req_param_t leave_req = {
+                    .dst_nwk_addr = 0x0000,      // Coordinator address
+                    .rejoin = 0,                 // No rejoin
+                    .remove_children = 1         // Remove children
+                };
+                esp_zb_zdo_device_leave_req(&leave_req, NULL, NULL);
+                vTaskDelay(pdMS_TO_TICKS(1000));   // Give time for leave to process
+                // Then clear NVS
+                clear_all_nvs();
+                esp_restart();
+                break;
+            }
             
-        case BUTTON_LONG_PRESS:
-            ESP_LOGI(TAG, "Long press detected - clearing NVS");
-            clear_zigbee_nvs();
-            esp_restart();
-            break;
+        
     }
 }
 }

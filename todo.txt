@@ -10,7 +10,7 @@ Done:
     button short press when network is closed reopens network -
     need to change this so it toggles screens if network isnt open
 
-Todo:
+
 
     setup lvgl screens and 'widgets' for screens:
         boot screen:
@@ -18,7 +18,7 @@ Todo:
             make this full screen text
             
         main screen:
-            temp - large numberds, clear, small decimal
+            temp - large numbers, clear, small decimal
             presence, maybe png image(s)?
             humidity (maybe, why not?)
             window(s) status, png images?
@@ -38,6 +38,8 @@ Todo:
             show 'devices registered and working' if nvs
             show 'error' if error
 
+Todo:
+
     control logic:
         presence:
             turn off (target temp to low) trv if no presence for 10 minutes
@@ -49,3 +51,6 @@ Todo:
             turn off trv if target reached
             turn on trv (target temp high) if presence detected in range
             and windows closed
+
+    ui updates:
+        update ui with all info

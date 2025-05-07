@@ -29,7 +29,7 @@ typedef struct {
 // Function declarations
 void zigbee_signal_handler(esp_zb_app_signal_t *signal_struct);
 esp_err_t save_device_to_nvs(zigbee_device_t *device);
-esp_err_t clear_zigbee_nvs(void);
+void clear_all_nvs(void);
 bool nvs_check_for_paired_devices(void);
 esp_err_t load_devices_from_nvs(void);
 esp_err_t open_network(uint16_t duration);

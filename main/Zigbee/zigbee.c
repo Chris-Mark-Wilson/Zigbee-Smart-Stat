@@ -139,28 +139,25 @@ esp_err_t save_devices_to_nvs(void)
     return err;
 }
 
-esp_err_t clear_zigbee_nvs(void)
+void clear_all_nvs(void)
 {
-    nvs_handle_t handle;
-    esp_err_t err = nvs_open(NVS_NAMESPACE, NVS_READWRITE, &handle);
-    if (err != ESP_OK) return err;
-
-    err = nvs_erase_all(handle);
-    if (err != ESP_OK) {
-        nvs_close(handle);
-        return err;
+    // Clear default NVS partition
+    nvs_flash_erase();
+    nvs_flash_init();
+    
+    // Clear Zigbee storage partition
+    const esp_partition_t* zb_partition = esp_partition_find_first(
+        ESP_PARTITION_TYPE_DATA, ESP_PARTITION_SUBTYPE_DATA_NVS, "zb_storage");
+    if (zb_partition) {
+        esp_partition_erase_range(zb_partition, 0, zb_partition->size);
     }
-
-    err = nvs_commit(handle);
-    nvs_close(handle);
-
-    if (err == ESP_OK) {
-        stored_device_count = 0;
-        memset(stored_devices, 0, sizeof(stored_devices));
-        ESP_LOGI(TAG, "NVS storage cleared successfully");
+    
+    // Clear Zigbee factory partition
+    const esp_partition_t* zb_fct_partition = esp_partition_find_first(
+        ESP_PARTITION_TYPE_DATA, ESP_PARTITION_SUBTYPE_DATA_NVS, "zb_fct");
+    if (zb_fct_partition) {
+        esp_partition_erase_range(zb_fct_partition, 0, zb_fct_partition->size);
     }
-
-    return err;
 }
 
 bool nvs_check_for_paired_devices(void)
@@ -255,16 +252,30 @@ void zigbee_signal_handler(esp_zb_app_signal_t *signal_struct)
     esp_zb_zdo_signal_device_annce_params_t *dev_annce_params = NULL;
 
     switch (sig_type) {
-        case ESP_ZB_ZDO_SIGNAL_SKIP_STARTUP: {
-            ui_event_t event = {
-                .target_screen = SCREEN_BOOT,
-                .message = "Starting Zigbee network..."
-            };
-            xQueueSend(ui_event_queue, &event, 0);
-            ESP_LOGI(TAG, "Zigbee stack initialized");
-            esp_zb_bdb_start_top_level_commissioning(ESP_ZB_BDB_MODE_INITIALIZATION);
-            break;
-        }
+ 
+
+
+            case ESP_ZB_ZDO_SIGNAL_PRODUCTION_CONFIG_READY: {  // Signal 23 (0x17)
+                ui_event_t event = {
+                    .target_screen = SCREEN_BOOT,
+                    .message = "Starting Zigbee stack..."
+                };
+                xQueueSend(ui_event_queue, &event, portMAX_DELAY);
+                ESP_LOGI(TAG, "Production config ready, starting initialization");
+                break;
+            }
+
+            case ESP_ZB_ZDO_SIGNAL_SKIP_STARTUP: {  // Signal 6 (0x06)
+                ESP_LOGI(TAG, "Skip startup signal received with status: 0x%x", signal_struct->esp_err_status);
+                ui_event_t event = {
+                    .target_screen = SCREEN_BOOT,
+                    .message = "Starting network formation..."
+                };
+                xQueueSend(ui_event_queue, &event, portMAX_DELAY);
+                ESP_LOGI(TAG, "Zigbee stack initialized, starting network formation");
+                esp_zb_bdb_start_top_level_commissioning(ESP_ZB_BDB_MODE_NETWORK_FORMATION);
+                break;
+            }
 
         case ESP_ZB_BDB_SIGNAL_DEVICE_FIRST_START: {
             ui_event_t event = {
@@ -329,6 +340,28 @@ void zigbee_signal_handler(esp_zb_app_signal_t *signal_struct)
                 };
                 xQueueSend(ui_event_queue, &event, 0);
             }
+            break;
+        }
+        case ESP_ZB_ZDO_SIGNAL_LEAVE: {
+            ui_event_t event = {
+                .target_screen = SCREEN_BOOT,
+                .message = "Leaving network..."
+            };
+            xQueueSend(ui_event_queue, &event, portMAX_DELAY);
+            ESP_LOGI(TAG, "Device leaving network");
+            // Device will restart after this
+            break;
+        }
+
+        case ESP_ZB_ZDO_SIGNAL_LEAVE_INDICATION: {
+            esp_zb_zdo_signal_leave_indication_params_t *leave_params = 
+                (esp_zb_zdo_signal_leave_indication_params_t*)esp_zb_app_signal_get_params(p_sg_p);
+            ui_event_t event = {
+                .target_screen = SCREEN_BOOT,
+                .message = "Device left, restarting..."
+            };
+            xQueueSend(ui_event_queue, &event, portMAX_DELAY);
+            ESP_LOGI(TAG, "Device 0x%04x left network", leave_params->short_addr);
             break;
         }
 
@@ -400,7 +433,7 @@ void zigbee_signal_handler(esp_zb_app_signal_t *signal_struct)
         }
 
         default:
-            ESP_LOGW(TAG, "Unhandled Zigbee signal: %d", sig_type);
+            ESP_LOGW(TAG, "Unhandled Zigbee signal: %d (0x%x)", sig_type, sig_type);
             break;
     }
 }
