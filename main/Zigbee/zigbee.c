@@ -2,23 +2,25 @@
 #include "nvs_flash.h"
 #include "zigbee.h"
 #include "esp_timer.h"
+#include "../LVGL_UI/ui_screens.h"
+#include "../LVGL_UI/ui_events.h"
 
 #define NVS_NAMESPACE "zigbee"
 #define MAX_DEVICE_NAME_LENGTH 32
 #define NVS_COMMIT_TIMEOUT_MS 1000
 #define REJOIN_THRESHOLD_MS   5000
 
-// Add these NVS keys
+
 #define NVS_KEY_DEVICE_COUNT "dev_count"
 #define NVS_KEY_DEVICE_BASE "device_"
 
 static const char *TAG = "ZIGBEE";
 static zigbee_device_t stored_devices[MAX_TRV_DEVICES + MAX_WINDOW_SENSORS];
 static uint8_t stored_device_count = 0;
-static bool network_open = false;
+bool network_open = false;
 
+extern QueueHandle_t ui_event_queue;
 
-// Modify device_exists to check last seen time
 static bool device_exists(uint16_t short_addr) 
 {
     int64_t now = esp_timer_get_time() / 1000;
@@ -36,7 +38,6 @@ static bool device_exists(uint16_t short_addr)
     return false;
 }
 
-// Modify save_device_to_nvs function
 esp_err_t save_device_to_nvs(zigbee_device_t *device) 
 {
     static int64_t last_save = 0;
@@ -254,43 +255,91 @@ void zigbee_signal_handler(esp_zb_app_signal_t *signal_struct)
     esp_zb_zdo_signal_device_annce_params_t *dev_annce_params = NULL;
 
     switch (sig_type) {
-        case ESP_ZB_ZDO_SIGNAL_SKIP_STARTUP:
+        case ESP_ZB_ZDO_SIGNAL_SKIP_STARTUP: {
+            ui_event_t event = {
+                .target_screen = SCREEN_BOOT,
+                .message = "Starting Zigbee network..."
+            };
+            xQueueSend(ui_event_queue, &event, 0);
             ESP_LOGI(TAG, "Zigbee stack initialized");
             esp_zb_bdb_start_top_level_commissioning(ESP_ZB_BDB_MODE_INITIALIZATION);
             break;
+        }
 
-        case ESP_ZB_BDB_SIGNAL_DEVICE_FIRST_START:
-            ESP_LOGI(TAG, "Starting network formation");
+        case ESP_ZB_BDB_SIGNAL_DEVICE_FIRST_START: {
+            ui_event_t event = {
+                .target_screen = SCREEN_BOOT,
+                .message = "Forming network..."
+            };
+            xQueueSend(ui_event_queue, &event, 0);
+            ESP_LOGI(TAG, "First start, forming network");
             esp_zb_bdb_start_top_level_commissioning(ESP_ZB_BDB_MODE_NETWORK_FORMATION);
             break;
+        }
 
-        case ESP_ZB_BDB_SIGNAL_FORMATION:
+        case ESP_ZB_BDB_SIGNAL_FORMATION: {
             if (signal_struct->esp_err_status == ESP_OK) {
+                ui_event_t event = {
+                    .target_screen = SCREEN_BOOT,
+                    .message = "Network formed, starting coordinator..."
+                };
+                xQueueSend(ui_event_queue, &event, 0);
                 ESP_LOGI(TAG, "Network formation successful");
                 esp_zb_bdb_start_top_level_commissioning(ESP_ZB_BDB_MODE_NETWORK_STEERING);
-                
-                if (nvs_check_for_paired_devices()) {
-                    ESP_LOGI(TAG, "Found paired devices, loading config...");
-                    load_devices_from_nvs();
-                } else {
-                    ESP_LOGI(TAG, "No paired devices found, opening network...");
-                    open_network(180);
-                }
             } else {
+                ui_event_t event = {
+                    .target_screen = SCREEN_BOOT,
+                    .message = "Network formation failed"
+                };
+                xQueueSend(ui_event_queue, &event, 0);
                 ESP_LOGE(TAG, "Network formation failed");
             }
             break;
+        }
 
-        case ESP_ZB_BDB_SIGNAL_STEERING:
+        case ESP_ZB_BDB_SIGNAL_STEERING: {
             if (signal_struct->esp_err_status == ESP_OK) {
                 ESP_LOGI(TAG, "Network steering completed");
+                if (!nvs_check_for_paired_devices()) {
+                    ui_event_t event = {
+                        .target_screen = SCREEN_BOOT,
+                        .message = "Ready for pairing - Put devices in pair mode..."
+                    };
+                    xQueueSend(ui_event_queue, &event, 0);
+                    ESP_LOGI(TAG, "No paired devices found, opening network...");
+                    open_network(180);  // Open for 3 minutes
+                } else {
+                    ui_event_t event = {
+                        .target_screen = SCREEN_BOOT,
+                        .message = "Loading paired devices..."
+                    };
+                    xQueueSend(ui_event_queue, &event, 0);
+                    load_devices_from_nvs();
+                }
             }
             break;
+        }
 
-        case ESP_ZB_ZDO_SIGNAL_DEVICE_ANNCE:
+        case ESP_ZB_NWK_SIGNAL_PERMIT_JOIN_STATUS: {
+            ESP_LOGI(TAG, "Permit join status changed");
+            if (network_open) {
+                ui_event_t event = {
+                    .target_screen = SCREEN_BOOT,
+                    .message = "Network open - Put devices in pair mode..."
+                };
+                xQueueSend(ui_event_queue, &event, 0);
+            }
+            break;
+        }
+
+        case ESP_ZB_ZDO_SIGNAL_DEVICE_ANNCE: {
             dev_annce_params = (esp_zb_zdo_signal_device_annce_params_t *)esp_zb_app_signal_get_params(p_sg_p);
-            
             if (device_exists(dev_annce_params->device_short_addr)) {
+                ui_event_t event = {
+                    .target_screen = SCREEN_BOOT,
+                    .message = "Device rejoined network"
+                };
+                xQueueSend(ui_event_queue, &event, 0);
                 ESP_LOGI(TAG, "Device 0x%04x rejoined network", dev_annce_params->device_short_addr);
                 break;
             }
@@ -301,8 +350,13 @@ void zigbee_signal_handler(esp_zb_app_signal_t *signal_struct)
             device_type_t dev_type = identify_device_type(dev_annce_params);
             if ((dev_type == DEVICE_TYPE_TRV && stored_device_count >= MAX_TRV_DEVICES) ||
                 (dev_type == DEVICE_TYPE_WINDOW_SENSOR && stored_device_count >= MAX_WINDOW_SENSORS)) {
+                ui_event_t event = {
+                    .target_screen = SCREEN_BOOT,
+                    .message = "Maximum devices of this type reached"
+                };
+                xQueueSend(ui_event_queue, &event, 0);
                 ESP_LOGW(TAG, "Maximum devices of this type reached");
-                return;
+                break;
             }
 
             zigbee_device_t new_device = {
@@ -316,42 +370,34 @@ void zigbee_signal_handler(esp_zb_app_signal_t *signal_struct)
                     stored_device_count + 1);
 
             if (save_device_to_nvs(&new_device) == ESP_OK) {
+                ui_event_t event = {
+                    .target_screen = SCREEN_BOOT,
+                    .message = "Device paired successfully"
+                };
+                xQueueSend(ui_event_queue, &event, 0);
                 ESP_LOGI(TAG, "Device saved as %s", new_device.name);
-                save_devices_to_nvs();  // Save all devices to persistent storage
+                
                 if (stored_device_count >= (MAX_TRV_DEVICES + MAX_WINDOW_SENSORS)) {
                     close_network();
+                    ui_event_t close_event = {
+                        .target_screen = SCREEN_BOOT
+                    };
+                    strncpy(close_event.message, "All devices paired, network closed", 64);
+                    xQueueSend(ui_event_queue, &close_event, 0);
                 }
             }
             break;
+        }
 
-        case ESP_ZB_ZDO_SIGNAL_LEAVE:
-            ESP_LOGW(TAG, "Device left the network");
-            break;
-
-        case ESP_ZB_NWK_SIGNAL_PERMIT_JOIN_STATUS:  // Signal 6
-            ESP_LOGI(TAG, "Permit join status changed");
-            break;
-
-        case ESP_ZB_ZDO_SIGNAL_PRODUCTION_CONFIG_READY:  // Signal 54
-            ESP_LOGD(TAG, "Production config ready");
-            break;
-
-        case ESP_ZB_ZDO_SIGNAL_DEVICE_AUTHORIZED:  // Signal 48
+        case ESP_ZB_ZDO_SIGNAL_DEVICE_AUTHORIZED: {
+            ui_event_t event = {
+                .target_screen = SCREEN_BOOT,
+                .message = "Device authorized"
+            };
+            xQueueSend(ui_event_queue, &event, 0);
             ESP_LOGI(TAG, "Device authorized");
             break;
-
-        // Common signals that don't need specific handling
-        case ESP_ZB_COMMON_SIGNAL_CAN_SLEEP:
-            ESP_LOGD(TAG, "Stack can sleep");
-            break;
-
-        case ESP_ZB_ZDO_SIGNAL_LEAVE_INDICATION:
-            ESP_LOGI(TAG, "Leave indication received");
-            break;
-
-        case ESP_ZB_BDB_FINDING_N_BINDING:
-            ESP_LOGD(TAG, "Finding and binding signal");
-            break;
+        }
 
         default:
             ESP_LOGW(TAG, "Unhandled Zigbee signal: %d", sig_type);

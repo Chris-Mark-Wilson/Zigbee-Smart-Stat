@@ -4,7 +4,8 @@ idf_component_register(
     "LCD_Driver/Vernon_ST7789T/Vernon_ST7789T.c" 
     "LCD_Driver/ST7789.c"
     "LVGL_Driver/LVGL_Driver.c"
-    "LVGL_UI/LVGL_smart_stat_ui.c"
+
+    "LVGL_UI/ui_screens.c"
     "Zigbee/zigbee.c"
     "Sensors/sensors.c"
      "Buttons/button.c"

@@ -34,6 +34,9 @@ bool nvs_check_for_paired_devices(void);
 esp_err_t load_devices_from_nvs(void);
 esp_err_t open_network(uint16_t duration);
 esp_err_t close_network(void);
-bool is_network_open(void);
+extern bool is_network_open(void);
+
+//global variables
+extern bool network_open;
 
 #endif // ZIGBEE_H

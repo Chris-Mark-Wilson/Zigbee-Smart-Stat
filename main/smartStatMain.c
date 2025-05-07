@@ -8,18 +8,18 @@
 #include "esp_check.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "freertos/queue.h"
 // #include "ha/esp_zigbee_ha_standard.h"
 
 //lcd headers
 #include "ST7789.h"
-#include "LVGL_smart_stat_ui.h"
+
 //zigbee headers
 #include "sensors.h"
 #include "Zigbee/zigbee.h"
 #include "Buttons/button.h"
-
-
-
+#include "LVGL_UI/ui_screens.h"
+#include "LVGL_UI/ui_events.h"
 
 // control logic parameters
 #define MIN_SAFETY_TEMP 16.0      // Safety temperature threshold (never go below this)
@@ -28,7 +28,6 @@
 // TRV control settings
 #define TRV_TEMP_MAX 30 // Maximum temperature (TRV ON)
 #define TRV_TEMP_MIN 5  // Minimum temperature (TRV OFF)
-
 
 // Global temperature and humidity storage
 static float g_temperature = 0;
@@ -42,11 +41,19 @@ static bool g_last_raw_presence = false; // Last raw reading
 
 static bool g_presence_detected = false; // Global presence state
 
-
+// Additional global variables
+static uint8_t target_high_temp = 21;  // Default high temp (17-21)
+static uint8_t target_low_temp = 16;   // Default low temp (13-16)
+static uint8_t presence_range = 5;      // Default range in meters (3-7)
 
 #if defined ZB_ED_ROLE
 #error Define ZB_COORDINATOR_ROLE in idf.py menuconfig to compile thermostat source code.
 #endif
+
+
+
+// Create queue handle
+QueueHandle_t ui_event_queue;
 
 //this exact function name MUST remain in this file
 // it is used by the zigbee library to call the signal handler
@@ -55,7 +62,6 @@ void esp_zb_app_signal_handler(esp_zb_app_signal_t *signal_struct)
 {
     zigbee_signal_handler(signal_struct);
 }
-
 
 // read the temp sensor function
 static esp_err_t read_dht_sensor(void)
@@ -317,11 +323,7 @@ static void dht_sensor_task(void *pvParameters)
             }
         }
 
-        // Read presence sensor more frequently for debouncing
-        if (g_rcwl_initialized)
-        {
-            read_rcwl_sensor();
-        }
+  
 
         // Run control logic at normal interval
         if (temp_counter == 0)
@@ -350,29 +352,19 @@ static void esp_zb_task(void *pvParameters)
     esp_zb_stack_main_loop();
 }
 
+// Function to check window status
+static bool window_is_open(void) {
+    // TODO: Implement window status check from zigbee devices
+    return false;  // Default to closed for now
+}
 
-
-
+// Modify lvgl_task to handle uninitialized values
 void lvgl_task(void *pvParameters)
 {
-    char buf[64]; // Buffer for displaying temperature and presence status
-
     while (1)
     {
-        lv_task_handler(); 
-        // Update temperature label
-        snprintf(buf, sizeof(buf), "%.1f°C", g_temperature);
-        lv_label_set_text(label_temp, buf);
-
-        // // Update presence label
-        // snprintf(buf, sizeof(buf), "%s", g_presence_detected ? "HOME" : "AWAY");
-        // lv_label_set_text(label_presence, buf);
-
-        // // Update TRV status label
-        // snprintf(buf, sizeof(buf), "HEATING %s", g_trv_is_on ? "ON" : "OFF");
-        // lv_label_set_text(label_trv, buf);
-
-        vTaskDelay(pdMS_TO_TICKS(1000)); // Update every second (adjust as needed)
+        lv_task_handler();  // Keep this as it's needed for LVGL core functionality
+        vTaskDelay(pdMS_TO_TICKS(10));  // Reduced delay for smoother updates
     }
 }
 
@@ -393,24 +385,37 @@ void hmmd_read_task(void *arg)
     }
 }
 
-
-
 // Callback function for button press
 static void button_pressed_cb(button_event_t event)
 {
     switch (event) {
         case BUTTON_PRESSED:
-            // Button just pressed - no action yet
+            // if (!network_open) {
+            //     ESP_LOGI(TAG, "Opening network on button press");
+            //     open_network(180);
+            // } else {
+            //     // Toggle screens when network is open
+            //     screen_id_t next_screen = (current_screen + 1) % SCREEN_COUNT;
+            //     if (next_screen != SCREEN_BOOT) { // Skip boot screen during normal operation
+            //         ui_switch_screen(next_screen);
+            //     }
+            // }
+            ESP_LOGI(TAG, "Button pressed - waiting for release");
             break;
-            
         case BUTTON_RELEASED:
-            // Short press - toggle network
-            if (is_network_open()) {
+            if (network_open) {
                 ESP_LOGI(TAG, "Closing network on button press");
                 close_network();
+                 // Toggle screens when network is closed
+                 screen_id_t next_screen = (current_screen + 1) % SCREEN_COUNT;
+                 if (next_screen != SCREEN_BOOT) { // Skip boot screen during normal operation
+                     ui_switch_screen(next_screen);
             } else {
-                ESP_LOGI(TAG, "Opening network on button press");
-                open_network(180);
+                // Toggle screens when network is closed
+                screen_id_t next_screen = (current_screen + 1) % SCREEN_COUNT;
+                if (next_screen != SCREEN_BOOT) { // Skip boot screen during normal operation
+                    ui_switch_screen(next_screen);
+                }
             }
             break;
             
@@ -421,42 +426,80 @@ static void button_pressed_cb(button_event_t event)
             break;
     }
 }
+}
+
+static void ui_update_task(void *pvParameters) {
+    ui_event_t event;
+    
+    while (1) {
+        if (xQueueReceive(ui_event_queue, &event, portMAX_DELAY)) {
+            // Handle UI update in LVGL context
+            switch (event.target_screen) {
+                case SCREEN_BOOT:
+                    ui_update_boot_status(event.message);
+                    break;
+                    case SCREEN_MAIN:
+                    ui_update_main_screen(
+                        g_temperature > 0 ? g_temperature : 0.0f,
+                        g_humidity > 0 ? g_humidity : 0.0f,
+                        g_presence_detected,
+                        window_is_open()
+                    );
+                    break;
+                    
+                case SCREEN_SETTINGS:
+                    ui_update_settings(
+                        target_high_temp,
+                        target_low_temp,
+                        presence_range
+                    );
+                    break;
+
+                case SCREEN_COUNT:
+                // This is just a count value, shouldn't be used as a screen
+                ESP_LOGW(TAG, "Invalid screen value SCREEN_COUNT received");
+                break;
+            
+            default:
+                ESP_LOGW(TAG, "Unknown screen value: %d", event.target_screen);
+                break;
+                // Add other screen updates as needed
+            }
+        }
+        vTaskDelay(pdMS_TO_TICKS(10)); // Give other tasks time
+    }
+}
 
 void app_main(void)
 {
-  // Initialize button
-  ESP_ERROR_CHECK(button_init());
-  button_register_callback(button_pressed_cb);
+    // Initialize button
+    ESP_ERROR_CHECK(button_init());
+    button_register_callback(button_pressed_cb);
 
     esp_zb_platform_config_t config = {
         .radio_config = ESP_ZB_DEFAULT_RADIO_CONFIG(),
         .host_config = ESP_ZB_DEFAULT_HOST_CONFIG(),
     };
-    ESP_ERROR_CHECK(nvs_flash_init());//init nvs flash, always first
-    ESP_ERROR_CHECK(esp_zb_platform_config(&config));//configure radio and host
+    ESP_ERROR_CHECK(nvs_flash_init());
+    ESP_ERROR_CHECK(esp_zb_platform_config(&config));
 
-    LCD_Init();   // Initialize LCD 
-    LVGL_Init(); // Initialize LVGL library
-    hmmd_uart_init(); // Initialize HMMD UART
- 
+    LCD_Init();   
+    LVGL_Init(); 
+    hmmd_uart_init();
 
-    Lvgl_smart_stat_ui_close();  // Clean up any existing UI
+    // Create UI event queue first
+    ui_event_queue = xQueueCreate(10, sizeof(ui_event_t));
+    if (ui_event_queue == NULL) {
+        ESP_LOGE(TAG, "Failed to create UI event queue");
+        return;
+    }
 
-    Lvgl_smart_stat_ui();// Create LVGL UI elements/start ui
+    // Initialize UI screens
+    ui_init_screens();
 
-    // Create Zigbee main task
+    // Create tasks after queue is initialized
+    xTaskCreate(lvgl_task, "lvgl_handler", 4096, NULL, 6, NULL);
+    xTaskCreate(ui_update_task, "ui_update", 4096, NULL, 5, NULL);
     xTaskCreate(esp_zb_task, "Zigbee_main", 4096, NULL, 5, NULL);
-
-    // Create DHT sensor monitoring task
     // xTaskCreate(dht_sensor_task, "DHT_sensor", 2048, NULL, 4, NULL);
-
-    //xTaskCreate(TaskFunction_t functionname, const char * const pcName, uint32_t usStackDepth, void *pvParameters, UBaseType_t uxPriority, TaskHandle_t *pvCreatedTask); // Create a task
-    // xTaskCreate(lvgl_task, "lvgl_task", 8192, NULL, 6, NULL); // Create LVGL task
-    // ESP_LOGI(TAG, "Creating HMMD read task...");
-    // esp_err_t ret = xTaskCreate(hmmd_read_task, "hmmd_read_task", 4096, NULL, 7, NULL);
-    // if (ret != pdPASS) {
-    //     ESP_LOGE(TAG, "Failed to create HMMD read task");
-    // } else {
-    //     ESP_LOGI(TAG, "HMMD read task created successfully");
-    // }
 }

@@ -1,11 +1,51 @@
-boot
-check nvs for devices, if so load devices
-if no nvs devices open network
-once found add devices to nvs and authorise
+Done:
+    boot
+    check nvs for devices, if so load devices
+    if no nvs devices open network
+    once found add devices to nvs and authorise
 
-button long press clears nvs
-button short press closes network
+    button long press clears nvs
+    button short press closes network
 
-button short press when network is closed reopens network -
-need to change this so it toggles screens if network isnt open
+    button short press when network is closed reopens network -
+    need to change this so it toggles screens if network isnt open
 
+Todo:
+
+    setup lvgl screens and 'widgets' for screens:
+        boot screen:
+            message widget/label for boot info/instructions
+            make this full screen text
+            
+        main screen:
+            temp - large numberds, clear, small decimal
+            presence, maybe png image(s)?
+            humidity (maybe, why not?)
+            window(s) status, png images?
+
+        settings:
+            target high temp (17-21)
+            target low unoccupied temp (13-16)
+            presence detection range (3m-7m)
+
+    change button operation to toggle screens when running
+
+    send info to lcd:
+        on boot:
+            show 'put devices into pair mode' if no nvs
+            show 'device type and name' when registered
+            show 'device saved' when saved to nvs
+            show 'devices registered and working' if nvs
+            show 'error' if error
+
+    control logic:
+        presence:
+            turn off (target temp to low) trv if no presence for 10 minutes
+            turn on trv if presence detected in range
+            and temp below target
+            and windows closed
+
+        temp:
+            turn off trv if target reached
+            turn on trv (target temp high) if presence detected in range
+            and windows closed

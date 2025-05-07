@@ -109,13 +109,14 @@ bool button_is_pressed(void)
 {
     return (gpio_get_level(NETWORK_CONTROL_BTN_PIN) == 0);
 }
+//this function is in main.c
+// // Callback function for button press
+// static void button_pressed_cb(void)
+// {
+//     ESP_LOGI(TAG, "Button pressed!");
+//     // We'll add network control logic here later
+// }
 
-// Callback function for button press
-static void button_pressed_cb(void)
-{
-    ESP_LOGI(TAG, "Button pressed!");
-    // We'll add network control logic here later
-}
 void button_register_callback(button_callback_t callback)
 {
     button_callback = callback;
