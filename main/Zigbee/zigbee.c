@@ -307,25 +307,19 @@ void zigbee_signal_handler(esp_zb_app_signal_t *signal_struct)
             }
             break;
         }
-
         case ESP_ZB_BDB_SIGNAL_STEERING: {
             if (signal_struct->esp_err_status == ESP_OK) {
                 ESP_LOGI(TAG, "Network steering completed");
                 if (!nvs_check_for_paired_devices()) {
                     ui_event_t event = {
                         .target_screen = SCREEN_BOOT,
-                        .message = "Ready for pairing - Put devices in pair mode..."
+                        .message = "Put devices in pair mode. Press button when finished..."
                     };
                     xQueueSend(ui_event_queue, &event, 0);
                     ESP_LOGI(TAG, "No paired devices found, opening network...");
                     open_network(180);  // Open for 3 minutes
                 } else {
-                    ui_event_t event = {
-                        .target_screen = SCREEN_BOOT,
-                        .message = "Loading paired devices..."
-                    };
-                    xQueueSend(ui_event_queue, &event, 0);
-                    load_devices_from_nvs();
+                    // ...existing code...
                 }
             }
             break;
@@ -336,12 +330,13 @@ void zigbee_signal_handler(esp_zb_app_signal_t *signal_struct)
             if (network_open) {
                 ui_event_t event = {
                     .target_screen = SCREEN_BOOT,
-                    .message = "Network open - Put devices in pair mode..."
+                    .message = "Network open - Add devices then press button when done..."
                 };
                 xQueueSend(ui_event_queue, &event, 0);
             }
             break;
         }
+  
         case ESP_ZB_ZDO_SIGNAL_LEAVE: {
             ui_event_t event = {
                 .target_screen = SCREEN_BOOT,
@@ -423,12 +418,24 @@ void zigbee_signal_handler(esp_zb_app_signal_t *signal_struct)
         }
 
         case ESP_ZB_ZDO_SIGNAL_DEVICE_AUTHORIZED: {
-            ui_event_t event = {
-                .target_screen = SCREEN_BOOT,
-                .message = "Device authorized"
-            };
-            xQueueSend(ui_event_queue, &event, 0);
-            ESP_LOGI(TAG, "Device authorized");
+            esp_zb_zdo_signal_device_authorized_params_t *auth_params = 
+                (esp_zb_zdo_signal_device_authorized_params_t*)esp_zb_app_signal_get_params(p_sg_p);
+            
+            // Find the device in our stored list
+            for (uint8_t i = 0; i < stored_device_count; i++) {
+                if (stored_devices[i].short_addr == auth_params->short_addr) {
+                    char message[64];
+                    snprintf(message, sizeof(message), "Device %s authorized", stored_devices[i].name);
+                    ui_event_t event = {
+                        .target_screen = SCREEN_BOOT,
+                        .message = ""
+                    };
+                    strncpy(event.message, message, sizeof(event.message) - 1);
+                    xQueueSend(ui_event_queue, &event, 0);
+                    ESP_LOGI(TAG, "%s", message);
+                    break;
+                }
+            }
             break;
         }
 
