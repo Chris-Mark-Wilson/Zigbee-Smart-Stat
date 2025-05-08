@@ -26,6 +26,7 @@ typedef struct {
             lv_obj_t *humid_label;
             lv_obj_t *presence_img;
             lv_obj_t *window_img;
+            lv_obj_t *range_label;    // New label for range display
         } main;
         
         // Settings screen widgets
@@ -42,7 +43,7 @@ typedef struct {
 
 extern screen_t g_screens[SCREEN_COUNT];
 extern screen_id_t current_screen;
-extern float g_current_range; 
+extern float g_current_range;     // Current detected range in meters 
 void ui_init_screens(void);
 void ui_switch_screen(screen_id_t screen);
 void ui_update_boot_status(const char *status);

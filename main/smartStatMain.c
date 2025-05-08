@@ -41,6 +41,7 @@ static uint8_t g_presence_counter = 0;   // Counter for debouncing
 static bool g_last_raw_presence = false; // Last raw reading
 static bool g_presence_detected = false; // Global presence state
 static float g_range_limit = 30.0f;       // Initial range limit in centimeters (2-7m)
+// float g_current_range = 0.0f;     // Current range value
 
 // Additional global variables
 static uint8_t target_high_temp = 21;  // Default high temp (17-21)
@@ -334,8 +335,9 @@ void hmmd_read_task(void *arg)
             if (range_str) {
                 float range_cm;
                 if (sscanf(range_str, "Range %f", &range_cm) == 1) {
+                    g_current_range = range_cm;  // Update the global range variable
                     // Update presence state
-                    bool previous = g_presence_detected;
+                 
                     g_presence_detected = (range_cm < g_range_limit);
 
                     ESP_LOGI(TAG, "HMMD: Range=%.1fcm, Limit=%.1fcm -> Presence %s", 

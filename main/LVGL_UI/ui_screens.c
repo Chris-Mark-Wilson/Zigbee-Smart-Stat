@@ -65,14 +65,26 @@ static void create_main_screen(void) {
     // Create container for status icons at bottom
     lv_obj_t *status_container = lv_obj_create(screen);
     lv_obj_remove_style_all(status_container);
-    lv_obj_align(status_container, LV_ALIGN_BOTTOM_MID, 0, -70);
-    lv_obj_set_size(status_container, 120, 80);  // Fixed size for icon container
+    lv_obj_align(status_container, LV_ALIGN_BOTTOM_MID, 0, -30);
+    lv_obj_set_size(status_container, 120, 140);
     
-    // Presence and window status icons side by side
-    g_screens[SCREEN_MAIN].main.presence_img = lv_img_create(status_container);
-    lv_img_set_src(g_screens[SCREEN_MAIN].main.presence_img, &presence_inactive);
-    lv_obj_align(g_screens[SCREEN_MAIN].main.presence_img, LV_ALIGN_LEFT_MID, 60, 0);
+    // Presence icon and its range label
+    lv_obj_t *presence_container = lv_obj_create(status_container);
+    lv_obj_remove_style_all(presence_container);
+    lv_obj_align(presence_container, LV_ALIGN_LEFT_MID, 60, 20);
+    lv_obj_set_size(presence_container, 70, 140);
 
+    g_screens[SCREEN_MAIN].main.presence_img = lv_img_create(presence_container);
+    lv_img_set_src(g_screens[SCREEN_MAIN].main.presence_img, &presence_inactive);
+    lv_obj_align(g_screens[SCREEN_MAIN].main.presence_img, LV_ALIGN_TOP_MID, 0, 0);
+
+    // Add range label under presence icon
+    g_screens[SCREEN_MAIN].main.range_label = lv_label_create(presence_container);
+    lv_obj_set_style_text_font(g_screens[SCREEN_MAIN].main.range_label, &lv_font_montserrat_18, 0);
+    lv_label_set_text(g_screens[SCREEN_MAIN].main.range_label, "0cm");
+    lv_obj_align(g_screens[SCREEN_MAIN].main.range_label, LV_ALIGN_BOTTOM_MID, 0, -30);
+
+    // Window icon
     g_screens[SCREEN_MAIN].main.window_img = lv_img_create(status_container);
     lv_img_set_src(g_screens[SCREEN_MAIN].main.window_img, &window_closed);
     lv_obj_align(g_screens[SCREEN_MAIN].main.window_img, LV_ALIGN_RIGHT_MID, -60, 0);
@@ -143,6 +155,12 @@ void ui_update_main_screen(float temp, float humidity, bool presence, bool is_wi
                    presence ? &presence_active : &presence_inactive);
     lv_img_set_src(g_screens[SCREEN_MAIN].main.window_img,
                    is_window_open ? &window_open : &window_closed);
+
+    // Update range display
+    static char range_buf[16];
+    float range_in_meters = g_current_range / 100.0f;  // Convert cm to meters
+    snprintf(range_buf, sizeof(range_buf), "%.1fm", range_in_meters);
+    lv_label_set_text(g_screens[SCREEN_MAIN].main.range_label, range_buf);
 }
 
 void ui_update_settings(uint8_t high_temp, uint8_t low_temp, uint8_t presence_range) {
