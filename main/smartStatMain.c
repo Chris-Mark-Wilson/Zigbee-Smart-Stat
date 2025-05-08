@@ -25,7 +25,7 @@
 // control logic parameters
 #define MIN_SAFETY_TEMP 16.0      // Safety temperature threshold (never go below this)
 #define COMFORT_TEMP 21.0         // Comfort temperature when presence detected
-#define PRESENCE_TIMEOUT_MS 5000 // 30 seconds threshold for presence detection
+#define PRESENCE_TIMEOUT_MS 10000 // 30 seconds threshold for presence detection
 // TRV control settings
 #define TRV_TEMP_MAX 30 // Maximum temperature (TRV ON)
 #define TRV_TEMP_MIN 5  // Minimum temperature (TRV OFF)
@@ -39,13 +39,14 @@ static int64_t g_last_presence_time = 0; // Last time presence was detected
 static bool g_trv_is_on = false;         // Current TRV state
 static uint8_t g_presence_counter = 0;   // Counter for debouncing
 static bool g_last_raw_presence = false; // Last raw reading
-
 static bool g_presence_detected = false; // Global presence state
+static float g_range_limit = 30.0f;       // Initial range limit in centimeters (2-7m)
 
 // Additional global variables
 static uint8_t target_high_temp = 21;  // Default high temp (17-21)
 static uint8_t target_low_temp = 16;   // Default low temp (13-16)
 static uint8_t presence_range = 5;      // Default range in meters (3-7)
+static bool g_hmmd_initialised = false; // Flag to indicate if DHT sensor is initialized
 
 #if defined ZB_ED_ROLE
 #error Define ZB_COORDINATOR_ROLE in idf.py menuconfig to compile thermostat source code.
@@ -91,47 +92,6 @@ static esp_err_t read_dht_sensor(void)
     return ESP_OK;
 }
 
-// read the presence sensor function
-static esp_err_t read_rcwl_sensor(void)
-{
-    if (!g_rcwl_initialized)
-    {
-        ESP_LOGE(TAG, "RCWL sensor not initialized");
-        return ESP_ERR_INVALID_STATE;
-    }
-
-    // Read the GPIO pin (raw reading)
-    int level = gpio_get_level(RCWL_GPIO_PIN);
-    bool current_raw_presence = (level == 1);
-
-    // Debouncing logic
-    if (current_raw_presence != g_last_raw_presence)
-    {
-        // Reset counter on state change
-        g_presence_counter = 1;
-        g_last_raw_presence = current_raw_presence;
-    }
-    else
-    {
-        // Increment counter for consistent readings
-        if (g_presence_counter < PRESENCE_DEBOUNCE_COUNT)
-        {
-            g_presence_counter++;
-        }
-        else if (g_presence_counter == PRESENCE_DEBOUNCE_COUNT)
-        {
-            // We've reached the threshold, update the actual presence state
-            if (g_presence_detected != current_raw_presence)
-            {
-                g_presence_detected = current_raw_presence;
-                ESP_LOGI(TAG, "RCWL Presence state changed: %s",
-                         g_presence_detected ? "DETECTED" : "NOT DETECTED");
-            }
-        }
-    }
-
-    return ESP_OK;
-}
 
 // Function to set TRV target temperature
 static void set_trv_temperature(uint8_t target_temp)
@@ -205,12 +165,7 @@ static void turn_trv_off(const char *reason)
         g_trv_is_on = false;
     }
 }
-// Function to check if TRV is connected and available
-// static bool is_trv_connected(void)
-// {
-//     bool connected = (temp_sensor.short_addr != 0);
-//     return connected;
-// }
+
 
 // Control logic function
 static void evaluate_control_logic(void)
@@ -276,7 +231,7 @@ static void dht_sensor_task(void *pvParameters)
 {
     // Initialize both sensors
     esp_err_t dht_ret = dht_sensor_init();
-    esp_err_t rcwl_ret = rcwl_sensor_init();
+   
 
     // Initialize timer for control logic
     g_last_presence_time = esp_timer_get_time() / 1000; // Current time in ms
@@ -284,21 +239,13 @@ static void dht_sensor_task(void *pvParameters)
     if (dht_ret != ESP_OK)
     {
         ESP_LOGE(TAG, "Failed to initialize DHT sensor");
-    }
-
-    if (rcwl_ret != ESP_OK)
-    {
-        ESP_LOGE(TAG, "Failed to initialize RCWL sensor");
-    }
-
-    if (dht_ret != ESP_OK && rcwl_ret != ESP_OK)
-    {
-        ESP_LOGE(TAG, "All sensors failed to initialize, ending task");
-        vTaskDelete(NULL);
         return;
     }
 
-    ESP_LOGI(TAG, "Sensor monitoring task started");
+
+
+
+    ESP_LOGI(TAG, "temp and humidity monitoring task started");
     ESP_LOGI(TAG, "Control settings: Safety temp: %.1f°C, Comfort temp: %.1f°C, Presence timeout: %d sec",
              MIN_SAFETY_TEMP, COMFORT_TEMP, PRESENCE_TIMEOUT_MS / 1000);
 
@@ -317,7 +264,7 @@ static void dht_sensor_task(void *pvParameters)
             temp_counter = 0;
 
             // Combined sensor status log after temperature reading
-            if (g_dht_initialized && g_rcwl_initialized)
+            if (g_dht_initialized && g_hmmd_initialised)
             {
                 ESP_LOGI(TAG, "Status: Temp=%.1f°C, Humidity: %.1f%%, Presence: %s",
                          g_temperature, g_humidity, g_presence_detected ? "DETECTED" : "NOT DETECTED");
@@ -372,18 +319,59 @@ void lvgl_task(void *pvParameters)
 void hmmd_read_task(void *arg)
 {
     uint8_t data[128];
-    while (1)
-    {
-        ESP_LOGI(TAG, "HMMD: Reading data from HMMD");
+    char *range_str;
+    
+    ESP_LOGI(TAG, "HMMD task started with initial range limit: %.1f cm", g_range_limit);
+    
+    while (1) {
         int len = uart_read_bytes(HMMD_UART_NUM, data, sizeof(data) - 1, pdMS_TO_TICKS(100));
-        if (len > 0)
-        {
-            data[len] = '\0'; // null-terminate
-            ESP_LOGI(TAG, "HMMD: %s", (char *)data);
-            // You can now parse data, e.g., look for keywords like "presence", "distance", etc.
+        
+        if (len > 0) {
+            data[len] = '\0';
+            
+            // Look for "Range " instead of "range:"
+            range_str = strstr((char *)data, "Range ");
+            if (range_str) {
+                float range_cm;
+                if (sscanf(range_str, "Range %f", &range_cm) == 1) {
+                    // Update presence state
+                    bool previous = g_presence_detected;
+                    g_presence_detected = (range_cm < g_range_limit);
+
+                    ESP_LOGI(TAG, "HMMD: Range=%.1fcm, Limit=%.1fcm -> Presence %s", 
+                            range_cm, 
+                            g_range_limit,
+                            g_presence_detected ? "DETECTED" : "NOT DETECTED");
+
+                    // Always trigger UI update when we get valid range data
+                    ui_event_t event = {
+                        .target_screen = SCREEN_MAIN,
+                        .message = ""
+                    };
+                    xQueueSend(ui_event_queue, &event, 0);
+                } else {
+                    ESP_LOGW(TAG, "Failed to parse range value from: %s", range_str);
+                }
+            }
         }
-        vTaskDelay(pdMS_TO_TICKS(500));
+        vTaskDelay(pdMS_TO_TICKS(100));
     }
+}
+
+void update_range_limit(float new_limit)
+{
+    if (new_limit < 2.0f) new_limit = 2.0f;
+    if (new_limit > 7.0f) new_limit = 7.0f;
+    
+    g_range_limit = new_limit;
+    ESP_LOGI(TAG, "Range limit updated to %.2fm", g_range_limit);
+    
+    // Force UI update when range limit changes
+    ui_event_t event = {
+        .target_screen = SCREEN_MAIN,
+        .message = ""
+    };
+    xQueueSend(ui_event_queue, &event, 0);
 }
 
 // Callback function for button press
@@ -497,7 +485,15 @@ void app_main(void)
 
     LCD_Init();   
     LVGL_Init(); 
-    hmmd_uart_init();
+    esp_err_t ret = hmmd_uart_init();
+    if(ret != ESP_OK)
+    {
+        ESP_LOGE(TAG, "Failed to initialize HMMD UART");
+        return;
+    } else {
+        ESP_LOGI(TAG, "HMMD UART initialized successfully");
+        g_hmmd_initialised = true;
+    }
 
     // Create UI event queue first
     ui_event_queue = xQueueCreate(10, sizeof(ui_event_t));
@@ -513,5 +509,7 @@ void app_main(void)
     xTaskCreate(lvgl_task, "lvgl_handler", 4096, NULL, 6, NULL);
     xTaskCreate(ui_update_task, "ui_update", 4096, NULL, 5, NULL);
     xTaskCreate(esp_zb_task, "Zigbee_main", 4096, NULL, 5, NULL);
+    xTaskCreate(hmmd_read_task, "HMMD_read", 2048, NULL, 4, NULL);
+    xTaskCreate(dht_sensor_task, "DHT_sensor", 2048, NULL, 4, NULL);
     // xTaskCreate(dht_sensor_task, "DHT_sensor", 2048, NULL, 4, NULL);
 }

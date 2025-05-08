@@ -21,7 +21,8 @@ typedef struct {
         
         // Main screen widgets
         struct {
-            lv_obj_t *temp_label;
+            lv_obj_t *temp_label;     // Whole number part
+            lv_obj_t *temp_decimal;   // Decimal part
             lv_obj_t *humid_label;
             lv_obj_t *presence_img;
             lv_obj_t *window_img;
@@ -41,7 +42,7 @@ typedef struct {
 
 extern screen_t g_screens[SCREEN_COUNT];
 extern screen_id_t current_screen;
-
+extern float g_current_range; 
 void ui_init_screens(void);
 void ui_switch_screen(screen_id_t screen);
 void ui_update_boot_status(const char *status);

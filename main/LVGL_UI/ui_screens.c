@@ -3,8 +3,15 @@
 
 static const char *TAG = "UI";
 
+LV_IMG_DECLARE(presence_active);
+LV_IMG_DECLARE(presence_inactive);
+LV_IMG_DECLARE(window_open);
+LV_IMG_DECLARE(window_closed);
+
 screen_t g_screens[SCREEN_COUNT];
 screen_id_t current_screen = SCREEN_BOOT;
+float g_current_range = 0.0f;     // Current detected range in meters
+
 
 static void create_boot_screen(void) {
     lv_obj_t *screen = lv_obj_create(NULL);
@@ -23,19 +30,52 @@ static void create_main_screen(void) {
     lv_obj_t *screen = lv_obj_create(NULL);
     g_screens[SCREEN_MAIN].screen = screen;
     
-    // Temperature display (large numbers)
-    g_screens[SCREEN_MAIN].main.temp_label = lv_label_create(screen);
+    // Create container for temperature display
+    lv_obj_t *temp_container = lv_obj_create(screen);
+    lv_obj_remove_style_all(temp_container);
+    lv_obj_align(temp_container, LV_ALIGN_TOP_MID, 30, 10);
+    lv_obj_set_size(temp_container, 200, 80);  // Set fixed size for container
+    
+    // Main temperature numbers (large)
+    g_screens[SCREEN_MAIN].main.temp_label = lv_label_create(temp_container);
     lv_obj_set_style_text_font(g_screens[SCREEN_MAIN].main.temp_label, &lv_font_montserrat_48, 0);
-    lv_obj_align(g_screens[SCREEN_MAIN].main.temp_label, LV_ALIGN_TOP_MID, 0, 20);
+    lv_obj_align(g_screens[SCREEN_MAIN].main.temp_label, LV_ALIGN_LEFT_MID, 15, 0);
     
-    // Humidity display
+    // Container for decimal and unit
+    lv_obj_t *temp_suffix_container = lv_obj_create(temp_container);
+    lv_obj_remove_style_all(temp_suffix_container);
+    lv_obj_align(temp_suffix_container, LV_ALIGN_RIGHT_MID, 0, 8);
+    
+    // Decimal part (smaller)
+    g_screens[SCREEN_MAIN].main.temp_decimal = lv_label_create(temp_suffix_container);
+    lv_obj_set_style_text_font(g_screens[SCREEN_MAIN].main.temp_decimal, &lv_font_montserrat_24, 0);
+    lv_obj_align(g_screens[SCREEN_MAIN].main.temp_decimal, LV_ALIGN_LEFT_MID, 0, 0);
+    
+    // Units (°C)
+    lv_obj_t *temp_unit = lv_label_create(temp_suffix_container);
+    lv_obj_set_style_text_font(temp_unit, &lv_font_montserrat_38, 0);
+    lv_label_set_text(temp_unit, "°C");
+    lv_obj_align(temp_unit, LV_ALIGN_LEFT_MID, 25, -5);
+    
+    // Humidity display (medium size)
     g_screens[SCREEN_MAIN].main.humid_label = lv_label_create(screen);
-    lv_obj_align(g_screens[SCREEN_MAIN].main.humid_label, LV_ALIGN_BOTTOM_LEFT, 10, -10);
+    lv_obj_set_style_text_font(g_screens[SCREEN_MAIN].main.humid_label, &lv_font_montserrat_38, 0);
+    lv_obj_align(g_screens[SCREEN_MAIN].main.humid_label, LV_ALIGN_CENTER, 0, -30);
     
-    // Presence and window status icons
-    g_screens[SCREEN_MAIN].main.presence_img = lv_img_create(screen);
-    g_screens[SCREEN_MAIN].main.window_img = lv_img_create(screen);
-    // TODO: Add image sources and positioning
+    // Create container for status icons at bottom
+    lv_obj_t *status_container = lv_obj_create(screen);
+    lv_obj_remove_style_all(status_container);
+    lv_obj_align(status_container, LV_ALIGN_BOTTOM_MID, 0, -70);
+    lv_obj_set_size(status_container, 120, 80);  // Fixed size for icon container
+    
+    // Presence and window status icons side by side
+    g_screens[SCREEN_MAIN].main.presence_img = lv_img_create(status_container);
+    lv_img_set_src(g_screens[SCREEN_MAIN].main.presence_img, &presence_inactive);
+    lv_obj_align(g_screens[SCREEN_MAIN].main.presence_img, LV_ALIGN_LEFT_MID, 60, 0);
+
+    g_screens[SCREEN_MAIN].main.window_img = lv_img_create(status_container);
+    lv_img_set_src(g_screens[SCREEN_MAIN].main.window_img, &window_closed);
+    lv_obj_align(g_screens[SCREEN_MAIN].main.window_img, LV_ALIGN_RIGHT_MID, -60, 0);
 }
 
 static void create_settings_screen(void) {
@@ -78,30 +118,33 @@ void ui_switch_screen(screen_id_t screen) {
     current_screen = screen;
 }
 
-void ui_update_main_screen(float temp, float humidity, bool presence, bool window_open) {
-    char temp_str[16];
-    char humid_str[16];
+void ui_update_main_screen(float temp, float humidity, bool presence, bool is_window_open)
+{
+    if (!g_screens[SCREEN_MAIN].main.temp_label) return;
     
-    snprintf(temp_str, sizeof(temp_str), "%.1f°C", temp);
-    snprintf(humid_str, sizeof(humid_str), "%.1f%%", humidity);
+    static char temp_whole[16];
+    static char temp_decimal[8];
+    static char humid_buf[32];
     
-    lv_label_set_text(g_screens[SCREEN_MAIN].main.temp_label, temp_str);
-    lv_label_set_text(g_screens[SCREEN_MAIN].main.humid_label, humid_str);
+    // Split temperature into whole and decimal parts
+    int temp_int = (int)temp;
+    int temp_dec = (int)((temp - temp_int) * 10);
     
-    // Update presence and window status icons
-    if (presence) {
-        lv_img_set_src(g_screens[SCREEN_MAIN].main.presence_img, "presence_active.png");
-    } else {
-        lv_img_set_src(g_screens[SCREEN_MAIN].main.presence_img, "presence_inactive.png");
-    }
-    if (window_open) {
-        lv_img_set_src(g_screens[SCREEN_MAIN].main.window_img, "window_open.png");
-    } else {
-        lv_img_set_src(g_screens[SCREEN_MAIN].main.window_img, "window_closed.png");
-    }
-    lv_obj_align(g_screens[SCREEN_MAIN].main.presence_img, LV_ALIGN_CENTER, -50, 0);
-    lv_obj_align(g_screens[SCREEN_MAIN].main.window_img, LV_ALIGN_CENTER, 50, 0);
+    snprintf(temp_whole, sizeof(temp_whole), "%d", temp_int);
+    snprintf(temp_decimal, sizeof(temp_decimal), ".%d", temp_dec);
+    snprintf(humid_buf, sizeof(humid_buf), "%.0f%%", humidity);  // Removed space before %
+    
+    lv_label_set_text(g_screens[SCREEN_MAIN].main.temp_label, temp_whole);
+    lv_label_set_text(g_screens[SCREEN_MAIN].main.temp_decimal, temp_decimal);
+    lv_label_set_text(g_screens[SCREEN_MAIN].main.humid_label, humid_buf);
+    
+    // Update status icons
+    lv_img_set_src(g_screens[SCREEN_MAIN].main.presence_img, 
+                   presence ? &presence_active : &presence_inactive);
+    lv_img_set_src(g_screens[SCREEN_MAIN].main.window_img,
+                   is_window_open ? &window_open : &window_closed);
 }
+
 void ui_update_settings(uint8_t high_temp, uint8_t low_temp, uint8_t presence_range) {
     lv_slider_set_value(g_screens[SCREEN_SETTINGS].settings.high_temp_slider, high_temp, LV_ANIM_OFF);
     lv_slider_set_value(g_screens[SCREEN_SETTINGS].settings.low_temp_slider, low_temp, LV_ANIM_OFF);

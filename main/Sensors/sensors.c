@@ -60,40 +60,8 @@ static esp_err_t dht_sensor_init(void)
     return ESP_OK;
 }
 
-// rcwl 0516 presence sensor initialization
-static esp_err_t rcwl_sensor_init(void)
-{
-    if (g_rcwl_initialized)
-    {
-        return ESP_OK;
-    }
 
-    ESP_LOGI(TAG, "Configuring RCWL presence sensor on GPIO %d", RCWL_GPIO_PIN);
-
-    // Configure GPIO as input (sensor outputs HIGH when presence detected)
-    gpio_config_t io_conf = {
-        .pin_bit_mask = (1ULL << RCWL_GPIO_PIN),
-        .mode = GPIO_MODE_INPUT,
-        .pull_up_en = GPIO_PULLUP_DISABLE,
-        .pull_down_en = GPIO_PULLDOWN_ENABLE, // Pull-down when no signal
-        .intr_type = GPIO_INTR_DISABLE,
-    };
-    esp_err_t ret = gpio_config(&io_conf);
-
-    if (ret != ESP_OK)
-    {
-        ESP_LOGE(TAG, "GPIO configuration for RCWL failed: %s", esp_err_to_name(ret));
-        return ret;
-    }
-
-    g_rcwl_initialized = true;
-    ESP_LOGI(TAG, "RCWL presence sensor configured successfully");
-    return ESP_OK;
-
-
-}
-
-void hmmd_uart_init(void)
+esp_err_t hmmd_uart_init(void)
 {
     const uart_config_t uart_config = {
         .baud_rate = 115200,  // Check your sensor's default rate
@@ -108,4 +76,5 @@ void hmmd_uart_init(void)
     uart_set_pin(HMMD_UART_NUM, HMMD_UART_TX_PIN, HMMD_UART_RX_PIN, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE);
 
     ESP_LOGI(TAG, "HMMD UART sensor initialized on RX GPIO %d", HMMD_UART_RX_PIN);
+    return ESP_OK;
 }

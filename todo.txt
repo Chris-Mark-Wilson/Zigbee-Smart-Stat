@@ -38,6 +38,8 @@ Done:
             show 'devices registered and working' if nvs
             show 'error' if error
 
+            display updates presence detected with icon
+
 Todo:
 
     control logic:
