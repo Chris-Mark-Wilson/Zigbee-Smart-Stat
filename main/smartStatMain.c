@@ -89,7 +89,7 @@ static esp_err_t read_dht_sensor(void)
     g_temperature = temperature;
     g_humidity = humidity;
 
-    ESP_LOGI(TAG, "DHT22 Readings - Temperature: %.1f°C, Humidity: %.1f%%", temperature, humidity);
+    // ESP_LOGI(TAG, "DHT22 Readings - Temperature: %.1f°C, Humidity: %.1f%%", temperature, humidity);
     return ESP_OK;
 }
 
@@ -265,11 +265,11 @@ static void dht_sensor_task(void *pvParameters)
             temp_counter = 0;
 
             // Combined sensor status log after temperature reading
-            if (g_dht_initialized && g_hmmd_initialised)
-            {
-                ESP_LOGI(TAG, "Status: Temp=%.1f°C, Humidity: %.1f%%, Presence: %s",
-                         g_temperature, g_humidity, g_presence_detected ? "DETECTED" : "NOT DETECTED");
-            }
+            // if (g_dht_initialized && g_hmmd_initialised)
+            // {
+            //     ESP_LOGI(TAG, "Status: Temp=%.1f°C, Humidity: %.1f%%, Presence: %s",
+            //              g_temperature, g_humidity, g_presence_detected ? "DETECTED" : "NOT DETECTED");
+            // }
         }
 
   
@@ -340,10 +340,10 @@ void hmmd_read_task(void *arg)
                  
                     g_presence_detected = (range_cm < g_range_limit);
 
-                    ESP_LOGI(TAG, "HMMD: Range=%.1fcm, Limit=%.1fcm -> Presence %s", 
-                            range_cm, 
-                            g_range_limit,
-                            g_presence_detected ? "DETECTED" : "NOT DETECTED");
+                    // ESP_LOGI(TAG, "HMMD: Range=%.1fcm, Limit=%.1fcm -> Presence %s", 
+                    //         range_cm, 
+                    //         g_range_limit,
+                    //         g_presence_detected ? "DETECTED" : "NOT DETECTED");
 
                     // Always trigger UI update when we get valid range data
                     ui_event_t event = {

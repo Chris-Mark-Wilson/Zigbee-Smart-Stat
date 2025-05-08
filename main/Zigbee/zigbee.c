@@ -17,6 +17,8 @@
 static const char *TAG = "ZIGBEE";
 static zigbee_device_t stored_devices[MAX_TRV_DEVICES + MAX_WINDOW_SENSORS];
 static uint8_t stored_device_count = 0;
+static uint8_t trv_count = 0;
+static uint8_t window_sensor_count = 0;
 bool network_open = false;
 
 extern QueueHandle_t ui_event_queue;
@@ -158,6 +160,9 @@ void clear_all_nvs(void)
     if (zb_fct_partition) {
         esp_partition_erase_range(zb_fct_partition, 0, zb_fct_partition->size);
     }
+    trv_count = 0;
+    window_sensor_count = 0;
+    stored_device_count = 0;
 }
 
 bool nvs_check_for_paired_devices(void)
@@ -236,13 +241,43 @@ bool is_network_open(void)
 
 static device_type_t identify_device_type(esp_zb_zdo_signal_device_annce_params_t *params)
 {
-    // TODO: Implement actual device type identification based on your devices
-    // For now, just alternate between TRV and window sensor
-    if (stored_device_count < MAX_TRV_DEVICES) {
+    ESP_LOGI(TAG, "Identifying device type for device 0x%04x", params->device_short_addr);
+    ESP_LOGI(TAG, "Capabilities: 0x%02x", params->capability);
+    ESP_LOGI(TAG, "MAC Address: %02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x",
+             params->ieee_addr[7], params->ieee_addr[6], params->ieee_addr[5], params->ieee_addr[4],
+             params->ieee_addr[3], params->ieee_addr[2], params->ieee_addr[1], params->ieee_addr[0]);
+
+    // From your logs:
+    // Window sensor MAC: a4:c1:38:7e:04:08:55:c2
+    // TRV MAC: 34:10:f4:ff:fe:e1:90:f3
+    
+    // Identify TRV by its unique MAC prefix
+    if (params->ieee_addr[7] == 0x34 && params->ieee_addr[6] == 0x10) {
+        ESP_LOGI(TAG, "Identified TRV by MAC address prefix");
         return DEVICE_TYPE_TRV;
-    } else {
+    }
+    
+    // Identify Window sensor by its unique MAC prefix
+    if (params->ieee_addr[7] == 0xa4 && params->ieee_addr[6] == 0xc1) {
+        ESP_LOGI(TAG, "Identified Window Sensor by MAC address prefix");
         return DEVICE_TYPE_WINDOW_SENSOR;
     }
+
+    // Fallback identification using raw capability byte
+    ESP_LOGI(TAG, "MAC address not recognized, using raw capability byte: 0x%02x", params->capability);
+    ESP_LOGI(TAG, "Raw capabilities breakdown:");
+    ESP_LOGI(TAG, "Bit 7 (0x80): %d", (params->capability & 0x80) ? 1 : 0);
+    ESP_LOGI(TAG, "Bit 6 (0x40): %d", (params->capability & 0x40) ? 1 : 0);
+    ESP_LOGI(TAG, "Bit 5 (0x20): %d", (params->capability & 0x20) ? 1 : 0);
+    ESP_LOGI(TAG, "Bit 4 (0x10): %d", (params->capability & 0x10) ? 1 : 0);
+    ESP_LOGI(TAG, "Bit 3 (0x08): %d", (params->capability & 0x08) ? 1 : 0);
+    ESP_LOGI(TAG, "Bit 2 (0x04): %d", (params->capability & 0x04) ? 1 : 0);
+    ESP_LOGI(TAG, "Bit 1 (0x02): %d", (params->capability & 0x02) ? 1 : 0);
+    ESP_LOGI(TAG, "Bit 0 (0x01): %d", (params->capability & 0x01) ? 1 : 0);
+
+    // Default to Window Sensor as fallback
+    ESP_LOGW(TAG, "Could not definitively identify device type, defaulting to Window Sensor");
+    return DEVICE_TYPE_WINDOW_SENSOR;
 }
 
 void zigbee_signal_handler(esp_zb_app_signal_t *signal_struct)
@@ -394,8 +429,8 @@ void zigbee_signal_handler(esp_zb_app_signal_t *signal_struct)
             };
 
             snprintf(new_device.name, MAX_DEVICE_NAME_LENGTH, "%s_%d", 
-                    dev_type == DEVICE_TYPE_TRV ? "TRV" : "WINDOW", 
-                    stored_device_count + 1);
+                dev_type == DEVICE_TYPE_TRV ? "TRV" : "WINDOW", 
+                dev_type == DEVICE_TYPE_TRV ? ++trv_count : ++window_sensor_count);
 
             if (save_device_to_nvs(&new_device) == ESP_OK) {
                 ui_event_t event = {
@@ -438,7 +473,23 @@ void zigbee_signal_handler(esp_zb_app_signal_t *signal_struct)
             }
             break;
         }
+        case ESP_ZB_NWK_SIGNAL_DEVICE_ASSOCIATED:  // 0x12
+        ESP_LOGI(TAG, "Device associated with network");
+        break;
 
+    case ESP_ZB_ZDO_SIGNAL_DEVICE_UPDATE:  // 0x30
+        ESP_LOGI(TAG, "Device update notification received");
+        break;
+
+    case ESP_ZB_NLME_STATUS_INDICATION:  // 0x32
+        ESP_LOGI(TAG, "Device authentication in progress");
+        break;
+  
+ case ESP_ZB_BDB_SIGNAL_DEVICE_REBOOT://0x06
+        ESP_LOGI(TAG, "Device reboot signal received");
+        break;
+
+      
         default:
             ESP_LOGW(TAG, "Unhandled Zigbee signal: %d (0x%x)", sig_type, sig_type);
             break;
