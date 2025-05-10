@@ -345,16 +345,46 @@ void zigbee_signal_handler(esp_zb_app_signal_t *signal_struct)
         case ESP_ZB_BDB_SIGNAL_STEERING: {
             if (signal_struct->esp_err_status == ESP_OK) {
                 ESP_LOGI(TAG, "Network steering completed");
-                if (!nvs_check_for_paired_devices()) {
-                    ui_event_t event = {
+             
+                if (!nvs_check_for_paired_devices())
+                {
+                    ui_event_t opening_event={
                         .target_screen = SCREEN_BOOT,
-                        .message = "Put devices in pair mode. Press button when finished..."
+                        .message = "No saved devices found, opening network..."
                     };
-                    xQueueSend(ui_event_queue, &event, 0);
+                    xQueueSend(ui_event_queue, &opening_event,0);
                     ESP_LOGI(TAG, "No paired devices found, opening network...");
+                    open_network(180); // Open for 3 minutes
+                }
+                else
+                {
+                   ui_event_t load_event = {
+                        .target_screen = SCREEN_BOOT,
+                        .message = "loading devices from NVS..."};
+                    xQueueSend(ui_event_queue, &load_event, 0);
+                    ESP_LOGI(TAG, "Paired devices found, loading from nvs...");
+                    if (load_devices_from_nvs() == ESP_OK) {
+                         ui_event_t loaded_event = {
+                            .target_screen = SCREEN_BOOT,
+                            .message = "Devices loaded from NVS"
+                        };
+                        xQueueSend(ui_event_queue, &loaded_event, 0);
+                        ESP_LOGI(TAG, "Devices loaded from NVS");
+                    } else {
+                         ui_event_t failed_event = {
+                            .target_screen = SCREEN_BOOT,
+                            .message = "Failed to load devices from NVS"
+                        };
+                        xQueueSend(ui_event_queue, &failed_event, 0);
+                        ESP_LOGE(TAG, "Failed to load devices from NVS");
+                    }
+                   ui_event_t reopen_event = {
+                        .target_screen = SCREEN_BOOT,
+                        .message = "Network open, add devices..."
+                    };
+                    xQueueSend(ui_event_queue, &reopen_event, 0);
+                    ESP_LOGI(TAG, "Network open, add devices...");
                     open_network(180);  // Open for 3 minutes
-                } else {
-                    // ...existing code...
                 }
             }
             break;
@@ -388,7 +418,7 @@ void zigbee_signal_handler(esp_zb_app_signal_t *signal_struct)
                 (esp_zb_zdo_signal_leave_indication_params_t*)esp_zb_app_signal_get_params(p_sg_p);
             ui_event_t event = {
                 .target_screen = SCREEN_BOOT,
-                .message = "Device left, restarting..."
+                .message = "Device left network"
             };
             xQueueSend(ui_event_queue, &event, portMAX_DELAY);
             ESP_LOGI(TAG, "Device 0x%04x left network", leave_params->short_addr);

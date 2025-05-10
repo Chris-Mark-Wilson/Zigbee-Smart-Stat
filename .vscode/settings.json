@@ -10,6 +10,7 @@
     ],
     "files.associations": {
         "nvs_flash.h": "c",
-        "lvgl.h": "c"
+        "lvgl.h": "c",
+        "switch_driver.h": "c"
     }
 }

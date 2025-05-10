@@ -1,7 +1,6 @@
 #include "ui_screens.h"
 #include "esp_log.h"
 
-static const char *TAG = "UI";
 
 LV_IMG_DECLARE(presence_active);
 LV_IMG_DECLARE(presence_inactive);
