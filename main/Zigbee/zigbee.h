@@ -4,6 +4,9 @@
 #include "esp_zigbee_core.h"
 #include "nvs.h"
 #include "nvs_flash.h"
+#include "ha/esp_zigbee_ha_standard.h"
+#include "switch_driver.h"
+
 
 /* Zigbee configuration */
 #define MAX_CHILDREN                    10          /* the max amount of connected devices */
@@ -58,7 +61,11 @@ typedef struct {
     int64_t last_seen;  // Timestamp for device tracking
 } zigbee_device_t;
 
-// ...existing code...
+typedef struct light_bulb_device_params_s {
+    esp_zb_ieee_addr_t ieee_addr;
+    uint8_t  endpoint;
+    uint16_t short_addr;
+} light_bulb_device_params_t;
 
 // Function declarations
 void zigbee_signal_handler(esp_zb_app_signal_t *signal_struct);

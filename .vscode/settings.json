@@ -11,6 +11,7 @@
     "files.associations": {
         "nvs_flash.h": "c",
         "lvgl.h": "c",
-        "switch_driver.h": "c"
+        "switch_driver.h": "c",
+        "esp_zigbee_ha_standard.h": "c"
     }
 }

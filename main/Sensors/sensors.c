@@ -3,13 +3,16 @@
 #include "driver/uart.h"
 #include "sensors.h"
 
-
-
 #define TAG "SENSORS"
 
+// Global variables definitions
+float g_temperature = 0;
+float g_humidity = 0;
+bool g_dht_initialised = false;
+bool g_hmmd_initialised = false;
 
 // Initialise DHT sensor
- esp_err_t dht_sensor_init(void)
+esp_err_t dht_sensor_init(void)
 {
     if (g_dht_initialised)
     {
@@ -39,8 +42,7 @@
     return ESP_OK;
 }
 
-
- esp_err_t hmmd_uart_init(void)
+esp_err_t hmmd_uart_init(void)
 {
     const uart_config_t uart_config = {
         .baud_rate = 115200,  // Check your sensor's default rate
@@ -59,7 +61,7 @@
     return ESP_OK;
 }
 
- esp_err_t read_dht_sensor(void)
+esp_err_t read_dht_sensor(void)
 {
     if (!g_dht_initialised)
     {

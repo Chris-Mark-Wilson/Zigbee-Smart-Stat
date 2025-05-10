@@ -102,6 +102,12 @@ static void dht_sensor_task(void *pvParameters)
         if (temp_counter == 0)
         {
             evaluate_control_logic();
+            ESP_LOGI(TAG, "DHT Readings - Temperature: %.1f°C, Humidity: %.1f%%", g_temperature, g_humidity);
+            ui_event_t event = {
+                .target_screen = SCREEN_MAIN,
+                .message = ""
+            };
+            xQueueSend(ui_event_queue, &event, 0);
         }
 
         // Shorter delay for presence sampling

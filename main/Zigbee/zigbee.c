@@ -279,6 +279,39 @@ static device_type_t identify_device_type(esp_zb_zdo_signal_device_annce_params_
     ESP_LOGW(TAG, "Could not definitively identify device type, defaulting to Window Sensor");
     return DEVICE_TYPE_WINDOW_SENSOR;
 }
+static void bind_cb(esp_zb_zdp_status_t zdo_status, void *user_ctx)
+{
+    if (zdo_status == ESP_ZB_ZDP_STATUS_SUCCESS) {
+        ESP_LOGI(TAG, "Bound successfully!");
+        if (user_ctx) {
+            light_bulb_device_params_t *light = (light_bulb_device_params_t *)user_ctx;
+            ESP_LOGI(TAG, "The window sensor originating from address(0x%x) on endpoint(%d)", light->short_addr, light->endpoint);
+            free(light);
+        }
+    }
+}
+
+static void user_find_cb(esp_zb_zdp_status_t zdo_status, uint16_t addr, uint8_t endpoint, void *user_ctx)
+{
+    if (zdo_status == ESP_ZB_ZDP_STATUS_SUCCESS) {
+        ESP_LOGI(TAG, "Found window sensor at 0x%04x, endpoint %d", addr, endpoint);
+        ESP_LOGI(TAG, "Binding to On/Off cluster");
+        esp_zb_zdo_bind_req_param_t bind_req;
+        light_bulb_device_params_t *light = (light_bulb_device_params_t *)malloc(sizeof(light_bulb_device_params_t));
+        light->endpoint = endpoint;
+        light->short_addr = addr;
+        esp_zb_ieee_address_by_short(light->short_addr, light->ieee_addr);
+        esp_zb_get_long_address(bind_req.src_address);
+        bind_req.src_endp = 1;//should be 1 for window sensor
+        bind_req.cluster_id = ESP_ZB_ZCL_CLUSTER_ID_ON_OFF;
+        bind_req.dst_addr_mode = ESP_ZB_ZDO_BIND_DST_ADDR_MODE_64_BIT_EXTENDED;
+        memcpy(bind_req.dst_address_u.addr_long, light->ieee_addr, sizeof(esp_zb_ieee_addr_t));
+        bind_req.dst_endp = endpoint;
+        bind_req.req_dst_addr = esp_zb_get_short_address(); /* TODO: Send bind request to self */
+        ESP_LOGI(TAG, "Try to bind On/Off");
+        esp_zb_zdo_device_bind_req(&bind_req, bind_cb, (void *)light);
+    }
+}
 
 void zigbee_signal_handler(esp_zb_app_signal_t *signal_struct)
 {
@@ -427,6 +460,7 @@ void zigbee_signal_handler(esp_zb_app_signal_t *signal_struct)
 
         case ESP_ZB_ZDO_SIGNAL_DEVICE_ANNCE: {
             dev_annce_params = (esp_zb_zdo_signal_device_annce_params_t *)esp_zb_app_signal_get_params(p_sg_p);
+
             if (device_exists(dev_annce_params->device_short_addr)) {
                 ui_event_t event = {
                     .target_screen = SCREEN_BOOT,
@@ -479,6 +513,12 @@ void zigbee_signal_handler(esp_zb_app_signal_t *signal_struct)
                     xQueueSend(ui_event_queue, &close_event, 0);
                 }
             }
+
+            //new bit to bind the device to the coordinator
+            esp_zb_zdo_match_desc_req_param_t  cmd_req;
+            cmd_req.dst_nwk_addr = dev_annce_params->device_short_addr;
+            cmd_req.addr_of_interest = dev_annce_params->device_short_addr;
+            esp_zb_zdo_find_on_off_light(&cmd_req, user_find_cb, NULL);
             break;
         }
 
