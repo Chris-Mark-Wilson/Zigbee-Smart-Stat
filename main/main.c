@@ -9,6 +9,8 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/queue.h"
+#include "zcl/esp_zigbee_zcl_thermostat.h"
+#include "zcl/esp_zigbee_zcl_command.h"
 
 // #include "ha/esp_zigbee_ha_standard.h"
 
@@ -31,7 +33,12 @@
 static int64_t g_last_presence_time = 0; // Last time presence was detected
 static bool g_is_window_open=false; // Global window state
 static bool g_presence_detected = false; // Global presence state
-// static uint8_t g_current_range = 0;      // current range read from hmmd sensor
+static bool g_trv_state = false;  // Track TRV state
+
+// Temperature control variables (in hundredths of degrees)
+static int16_t g_target_temp = 2400;     // 21.00°C
+static int16_t g_min_temp = 1600;        // 16.00°C
+static int16_t g_max_temp = 2400;        // 24.00°C
 
 
 #if defined ZB_ED_ROLE
@@ -40,6 +47,8 @@ static bool g_presence_detected = false; // Global presence state
 
 // Create queue handle for UI events
 QueueHandle_t ui_event_queue;
+
+
 
 //this exact function name MUST remain in this file
 // it is used by the zigbee library to call the signal handler
@@ -54,39 +63,86 @@ void esp_zb_app_signal_handler(esp_zb_app_signal_t *signal_struct)
 //handle window sensor state change
 static esp_err_t zb_attribute_handler(const esp_zb_zcl_set_attr_value_message_t *message)
 {
-    #define TAG "ZB_ATTR_HANDLER"
+      static const char *TAG = "ZB_ATTR_HANDLER";
     ESP_LOGI(TAG, "Zigbee attribute handler called with message: %p", message);
     esp_err_t ret = ESP_OK;
-    bool window_state = 0;
 
     ESP_RETURN_ON_FALSE(message, ESP_FAIL, TAG, "Empty message");
     ESP_RETURN_ON_FALSE(message->info.status == ESP_ZB_ZCL_STATUS_SUCCESS, ESP_ERR_INVALID_ARG, TAG, "Received message: error status(%d)",
                         message->info.status);
-    ESP_LOGI(TAG, "Received message: endpoint(%d), cluster(0x%x), attribute(0x%x), data size(%d)", message->info.dst_endpoint, message->info.cluster,
-             message->attribute.id, message->attribute.data.size);
-    if (message->info.dst_endpoint == 1){ // Window sensor endpoint{
+
+    ESP_LOGI(TAG, "Received message: endpoint(%d), cluster(0x%x), attribute(0x%x), data size(%d)", 
+             message->info.dst_endpoint, message->info.cluster, message->attribute.id, message->attribute.data.size);
+
+    // Check if the message is from the window sensor's endpoint
+    if (message->info.dst_endpoint == 1) {  // Assuming endpoint 1 is the window sensor
+        // Handle IAS Zone Cluster (0x0500)
+        if (message->info.cluster == ESP_ZB_ZCL_CLUSTER_ID_IAS_ZONE) {
+            if (message->attribute.id == ESP_ZB_ZCL_ATTR_IAS_ZONE_ZONESTATUS_ID) {
+                uint16_t zone_status = *(uint16_t *)message->attribute.data.value;
+                ESP_LOGI(TAG, "Window sensor zone status: 0x%04x", zone_status);
+
+                // Check zone status bitmask
+                if (zone_status & 0x0001) {
+                    ESP_LOGI(TAG, "Window is OPEN");
+                    g_is_window_open = true;
+                } else {
+                    ESP_LOGI(TAG, "Window is CLOSED");
+                    g_is_window_open = false;
+                }
+            }
+        }
+
+        // Handle On/Off Cluster (0x0006) as an alternative
         if (message->info.cluster == ESP_ZB_ZCL_CLUSTER_ID_ON_OFF) {
-            if (message->attribute.id == ESP_ZB_ZCL_ATTR_ON_OFF_ON_OFF_ID && message->attribute.data.type == ESP_ZB_ZCL_ATTR_TYPE_BOOL) {
-                window_state = message->attribute.data.value ? *(bool *)message->attribute.data.value : window_state;
-                ESP_LOGI(TAG, "Light sets to %s", window_state ? "On" : "Off");
-                // light_driver_set_power(light_state);
+            if (message->attribute.id == ESP_ZB_ZCL_ATTR_ON_OFF_ON_OFF_ID && 
+                message->attribute.data.type == ESP_ZB_ZCL_ATTR_TYPE_BOOL) {
+                bool window_state = *(bool *)message->attribute.data.value;
+                ESP_LOGI(TAG, "Window state: %s", window_state ? "OPEN" : "CLOSED");
+                g_is_window_open = window_state;
             }
         }
     }
+
     return ret;
 }
 static esp_err_t zb_action_handler(esp_zb_core_action_callback_id_t callback_id, const void *message)
 {
-    #define TAG "ZB_ACTION_HANDLER"
-    ESP_LOGI(TAG, "Zigbee action handler called with callback ID: %d", callback_id);
+    static const char *TAG = "ZB_ACTION_HANDLER";
     esp_err_t ret = ESP_OK;
+    
     switch (callback_id) {
-    case ESP_ZB_CORE_SET_ATTR_VALUE_CB_ID:
-        ret = zb_attribute_handler((esp_zb_zcl_set_attr_value_message_t *)message);
+        case ESP_ZB_CORE_SET_ATTR_VALUE_CB_ID:
+            ret = zb_attribute_handler((esp_zb_zcl_set_attr_value_message_t *)message);
+            break;
+            
+        case ESP_ZB_CORE_CMD_READ_ATTR_RESP_CB_ID:  // 0x1000
+            ESP_LOGI(TAG, "Read attribute response received");
+            // Handle attribute reading response
+            break;
+            
+        case ESP_ZB_CORE_REPORT_ATTR_CB_ID:  // 0x2000
+            ESP_LOGI(TAG, "Attribute report received");
+            // Handle attribute reporting
+            if (message) {
+                const esp_zb_zcl_report_attr_message_t *report = (esp_zb_zcl_report_attr_message_t *)message;
+                ESP_LOGI(TAG, "Received report from addr: 0x%04x, cluster: 0x%04x", 
+                    report->src_address.u.short_addr, report->cluster);
+            }
+            break;
+                        
+        case ESP_ZB_CORE_CMD_WRITE_ATTR_RESP_CB_ID:  // 0x1001
+        ESP_LOGI(TAG, "Write attribute response received");
+        if (message) {
+            const esp_zb_zcl_cmd_write_attr_resp_message_t *resp = 
+                (esp_zb_zcl_cmd_write_attr_resp_message_t *)message;
+            ESP_LOGI(TAG, "Write response status: 0x%02x", resp->info.status);
+        }
         break;
-    default:
-        ESP_LOGW(TAG, "Receive Zigbee action(0x%x) callback", callback_id);
-        break;
+            
+        default:
+            ESP_LOGW(TAG, "Unhandled Zigbee action(0x%x) callback", callback_id);
+            break;
     }
     return ret;
 }
@@ -155,17 +211,58 @@ static void dht_sensor_task(void *pvParameters)
     }
 }
 
+//do not delete, needed to bind trv for two way communication
+static esp_zb_cluster_list_t *custom_thermostat_clusters_create(esp_zb_thermostat_cfg_t *thermostat)
+{
+    esp_zb_cluster_list_t *cluster_list = esp_zb_zcl_cluster_list_create();
+    esp_zb_attribute_list_t *basic_cluster = esp_zb_basic_cluster_create(&(thermostat->basic_cfg));
+    ESP_ERROR_CHECK(esp_zb_basic_cluster_add_attr(basic_cluster, ESP_ZB_ZCL_ATTR_BASIC_MANUFACTURER_NAME_ID, MANUFACTURER_NAME));
+    ESP_ERROR_CHECK(esp_zb_basic_cluster_add_attr(basic_cluster, ESP_ZB_ZCL_ATTR_BASIC_MODEL_IDENTIFIER_ID, MODEL_IDENTIFIER));
+    ESP_ERROR_CHECK(esp_zb_cluster_list_add_basic_cluster(cluster_list, basic_cluster, ESP_ZB_ZCL_CLUSTER_SERVER_ROLE));
+    ESP_ERROR_CHECK(esp_zb_cluster_list_add_identify_cluster(cluster_list, esp_zb_identify_cluster_create(&(thermostat->identify_cfg)), ESP_ZB_ZCL_CLUSTER_SERVER_ROLE));
+    ESP_ERROR_CHECK(esp_zb_cluster_list_add_identify_cluster(cluster_list, esp_zb_zcl_attr_list_create(ESP_ZB_ZCL_CLUSTER_ID_IDENTIFY), ESP_ZB_ZCL_CLUSTER_CLIENT_ROLE));
+    ESP_ERROR_CHECK(esp_zb_cluster_list_add_thermostat_cluster(cluster_list, esp_zb_thermostat_cluster_create(&(thermostat->thermostat_cfg)), ESP_ZB_ZCL_CLUSTER_SERVER_ROLE));
+    /* Add temperature measurement cluster for attribute reporting */
+    ESP_ERROR_CHECK(esp_zb_cluster_list_add_temperature_meas_cluster(cluster_list, esp_zb_temperature_meas_cluster_create(NULL), ESP_ZB_ZCL_CLUSTER_CLIENT_ROLE));
+    return cluster_list;
+}
+//do not delete, needed to bind trv for two way communication
+static esp_zb_ep_list_t *custom_thermostat_ep_create(uint8_t endpoint_id, esp_zb_thermostat_cfg_t *thermostat)
+{
+    esp_zb_ep_list_t *ep_list = esp_zb_ep_list_create();
+    esp_zb_endpoint_config_t endpoint_config = {
+        .endpoint = endpoint_id,
+        .app_profile_id = ESP_ZB_AF_HA_PROFILE_ID,
+        .app_device_id = ESP_ZB_HA_THERMOSTAT_DEVICE_ID,
+        .app_device_version = 0
+    };
+    esp_zb_ep_list_add_ep(ep_list, custom_thermostat_clusters_create(thermostat), endpoint_config);
+    return ep_list;
+}
+
 static void zigbee_task(void *pvParameters)
 {
     // Initialize Zigbee stack as Coordinator
     esp_zb_cfg_t zb_nwk_cfg = ESP_ZB_ZC_CONFIG();
     esp_zb_init(&zb_nwk_cfg);
 
+    /* Create customized thermostat endpoint */
+    //identifies the coordinator as a custom therostat device
+    //esential for proper device identification, supposrting temp related clusters and enabling bi direction communication with the trv
+    esp_zb_thermostat_cfg_t thermostat_cfg = ESP_ZB_DEFAULT_THERMOSTAT_CONFIG();
+    esp_zb_ep_list_t *esp_zb_thermostat_ep = custom_thermostat_ep_create(HA_THERMOSTAT_ENDPOINT, &thermostat_cfg);
+
+    /* Register the device */
+    esp_zb_device_register(esp_zb_thermostat_ep);
+
     // Set channel mask
     esp_zb_set_primary_network_channel_set(ESP_ZB_PRIMARY_CHANNEL_MASK);
-
+    
+    esp_zb_core_action_handler_register(zb_action_handler);
+    esp_zb_set_primary_network_channel_set(ESP_ZB_PRIMARY_CHANNEL_MASK);
+    ESP_ERROR_CHECK(esp_zb_start(false));
     // Start Zigbee stack with autostart
-    ESP_ERROR_CHECK(esp_zb_start(true));  // Changed to true for autostart
+  
 
     // Enter Zigbee main loop
     esp_zb_stack_main_loop();
@@ -222,46 +319,92 @@ static void hmmd_read_task(void *arg)
 // Callback function for button press
 static void button_pressed_cb(button_event_t event)
 {
+    
+
     switch (event) {
         case BUTTON_PRESSED:
-        
             ESP_LOGI(TAG, "Button pressed - waiting for release");
             break;
-        case BUTTON_RELEASED:
-            if (network_open) {
+
+        case BUTTON_RELEASED: {
+            if (current_screen == SCREEN_BOOT && network_open) {
                 ESP_LOGI(TAG, "Closing network on button press");
                 close_network();
-                 // Toggle screens when network is closed
-                 screen_id_t next_screen = (current_screen + 1) % SCREEN_COUNT;
-                 if (next_screen != SCREEN_BOOT) { // Skip boot screen during normal operation
-                     ui_switch_screen(next_screen);
-            } else {
-                // Toggle screens when network is closed
-                screen_id_t next_screen = (current_screen + 1) % SCREEN_COUNT;
-                if (next_screen != SCREEN_BOOT) { // Skip boot screen during normal operation
-                    ui_switch_screen(next_screen);
+                ui_switch_screen(SCREEN_MAIN);
+            } 
+            else if (current_screen == SCREEN_MAIN) {
+                if (stored_device_count > 0) {
+                    // Toggle between min and max temperature and corresponding mode
+                    g_trv_state = !g_trv_state;
+                    g_target_temp = g_trv_state ? g_max_temp : g_min_temp;
+                    
+                    // First write the system mode (OFF/HEAT)
+                    esp_zb_zcl_write_attr_cmd_t mode_cmd = {
+                        .zcl_basic_cmd = {
+                            .dst_addr_u.addr_short = stored_devices[0].short_addr,
+                            .dst_endpoint = stored_devices[0].endpoint,
+                            .src_endpoint = HA_THERMOSTAT_ENDPOINT,
+                        },
+                        .address_mode = ESP_ZB_APS_ADDR_MODE_16_ENDP_PRESENT,
+                        .clusterID = ESP_ZB_ZCL_CLUSTER_ID_THERMOSTAT,
+                        .direction = ESP_ZB_ZCL_CMD_DIRECTION_TO_SRV,
+                        .attr_number = 1,
+                        .attr_field = &(esp_zb_zcl_attribute_t){
+                            .id = ESP_ZB_ZCL_ATTR_THERMOSTAT_SYSTEM_MODE_ID,
+                            .data.type = ESP_ZB_ZCL_ATTR_TYPE_8BIT_ENUM,  // Use 8-bit enum type
+                            .data.size = sizeof(uint8_t),
+                            .data.value = (uint8_t*)(g_trv_state ? 
+                                &(uint8_t){ESP_ZB_ZCL_THERMOSTAT_SYSTEM_MODE_HEAT} : 
+                                &(uint8_t){ESP_ZB_ZCL_THERMOSTAT_SYSTEM_MODE_OFF})
+                        }
+                    };
+                    
+                    ESP_LOGI(TAG, "Setting TRV mode to %s", g_trv_state ? "HEAT" : "OFF");
+                    esp_zb_zcl_write_attr_cmd_req(&mode_cmd);
+            
+                    // Only send temperature if we're turning heat on
+                    if (g_trv_state) {
+                        esp_zb_zcl_write_attr_cmd_t temp_cmd = {
+                            .zcl_basic_cmd = {
+                                .dst_addr_u.addr_short = stored_devices[0].short_addr,
+                                .dst_endpoint = stored_devices[0].endpoint,
+                                .src_endpoint = HA_THERMOSTAT_ENDPOINT,
+                            },
+                            .address_mode = ESP_ZB_APS_ADDR_MODE_16_ENDP_PRESENT,
+                            .clusterID = ESP_ZB_ZCL_CLUSTER_ID_THERMOSTAT,
+                            .direction = ESP_ZB_ZCL_CMD_DIRECTION_TO_SRV,
+                            .attr_number = 1,
+                            .attr_field = &(esp_zb_zcl_attribute_t){
+                                .id = ESP_ZB_ZCL_ATTR_THERMOSTAT_OCCUPIED_HEATING_SETPOINT_ID,
+                                .data.type = ESP_ZB_ZCL_ATTR_TYPE_S16,
+                                .data.size = sizeof(int16_t),
+                                .data.value = (uint8_t*)&g_target_temp
+                            }
+                        };
+                        
+                        ESP_LOGI(TAG, "Setting TRV target temperature to %.1f°C", g_target_temp / 100.0f);
+                        esp_zb_zcl_write_attr_cmd_req(&temp_cmd);
+                    }
+                } else {
+                    ESP_LOGW(TAG, "No devices stored - cannot send commands");
                 }
             }
             break;
-            case BUTTON_LONG_PRESS: {
-                ESP_LOGI(TAG, "Long press detected - leaving network and clearing NVS");
-                // First leave the network
-                esp_zb_zdo_mgmt_leave_req_param_t leave_req = {
-                    .dst_nwk_addr = 0x0000,      // Coordinator address
-                    .rejoin = 0,                 // No rejoin
-                    .remove_children = 1         // Remove children
-                };
-                esp_zb_zdo_device_leave_req(&leave_req, NULL, NULL);
-                vTaskDelay(pdMS_TO_TICKS(1000));   // Give time for leave to process
-                // Then clear NVS
-                clear_all_nvs();
-                esp_restart();
-                break;
-            }
-            
-        
+        }
+        case BUTTON_LONG_PRESS: {
+            ESP_LOGI(TAG, "Long press detected - leaving network and clearing NVS");
+            esp_zb_zdo_mgmt_leave_req_param_t leave_req = {
+                .dst_nwk_addr = 0x0000,
+                .rejoin = 0,
+                .remove_children = 1
+            };
+            esp_zb_zdo_device_leave_req(&leave_req, NULL, NULL);
+            vTaskDelay(pdMS_TO_TICKS(1000));
+            clear_all_nvs();
+            esp_restart();
+            break;
+        }
     }
-}
 }
 
 static void ui_update_task(void *pvParameters) {

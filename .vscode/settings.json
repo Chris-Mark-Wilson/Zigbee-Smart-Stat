@@ -12,6 +12,7 @@
         "nvs_flash.h": "c",
         "lvgl.h": "c",
         "switch_driver.h": "c",
-        "esp_zigbee_ha_standard.h": "c"
+        "esp_zigbee_ha_standard.h": "c",
+        "zb_ha_config.h": "c"
     }
 }

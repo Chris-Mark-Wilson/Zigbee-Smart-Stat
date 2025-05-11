@@ -2,16 +2,18 @@
 #define ZIGBEE_H
 
 #include "esp_zigbee_core.h"
+
 #include "nvs.h"
 #include "nvs_flash.h"
 #include "ha/esp_zigbee_ha_standard.h"
 #include "switch_driver.h"
-
+#include "zcl/esp_zigbee_zcl_common.h"
+#include "zcl/esp_zigbee_zcl_ias_zone.h"
 
 /* Zigbee configuration */
 #define MAX_CHILDREN                    10          /* the max amount of connected devices */
 #define INSTALLCODE_POLICY_ENABLE       false       /* enable the install code policy for security */
-#define HA_THERMOSTAT_ENDPOINT          1           /* esp thermostat device endpoint */
+#define HA_THERMOSTAT_ENDPOINT          10          /* esp thermostat device endpoint */
 #define ESP_ZB_PRIMARY_CHANNEL_MASK     (1l << 13)  /* Zigbee primary channel mask use in the example */
 
 /* Attribute values in ZCL string format
@@ -40,19 +42,19 @@
     }
 /* End Zigbee configuration*/
 
-// local defines
-
+// Define constants
+#define MAX_DEVICE_NAME_LENGTH 32
 #define MAX_TRV_DEVICES 2
 #define MAX_WINDOW_SENSORS 3
-#define MAX_DEVICE_NAME_LENGTH 32
 
+// Device type enumeration
 typedef enum {
+    DEVICE_TYPE_UNKNOWN = 0,
     DEVICE_TYPE_TRV = 1,
     DEVICE_TYPE_WINDOW_SENSOR = 2
 } device_type_t;
 
-
-
+// Device structure definition
 typedef struct {
     device_type_t type;
     uint16_t short_addr;
@@ -61,23 +63,14 @@ typedef struct {
     int64_t last_seen;  // Timestamp for device tracking
 } zigbee_device_t;
 
-typedef struct light_bulb_device_params_s {
-    esp_zb_ieee_addr_t ieee_addr;
-    uint8_t  endpoint;
-    uint16_t short_addr;
-} light_bulb_device_params_t;
-
+// Declare external array
+extern zigbee_device_t stored_devices[MAX_TRV_DEVICES + MAX_WINDOW_SENSORS];
+extern uint8_t stored_device_count;
 // Function declarations
 void zigbee_signal_handler(esp_zb_app_signal_t *signal_struct);
-esp_err_t save_device_to_nvs(zigbee_device_t *device);
-void clear_all_nvs(void);
-bool nvs_check_for_paired_devices(void);
-esp_err_t load_devices_from_nvs(void);
-esp_err_t open_network(uint16_t duration);
-esp_err_t close_network(void);
-extern bool is_network_open(void);
 
-//global variables
+void clear_all_nvs(void);
+esp_err_t close_network(void);
 extern bool network_open;
 
 #endif // ZIGBEE_H
