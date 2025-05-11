@@ -1,6 +1,6 @@
 #include "nvs.h"
 #include "nvs_flash.h"
-#include "zigbee.h"
+#include "Zigbee/zigbee.h"
 #include "esp_timer.h"
 #include "../LVGL_UI/ui_screens.h"
 #include "../LVGL_UI/ui_events.h"
@@ -13,10 +13,28 @@
 
 #define NVS_KEY_DEVICE_COUNT "dev_count"
 #define NVS_KEY_DEVICE_BASE "device_"
+#define MAX_TRV_DEVICES 2
+#define MAX_WINDOW_SENSORS 3
+#define MAX_DEVICE_NAME_LENGTH 32
+
+#define ARRAY_LENGTH(arr) (sizeof(arr) / sizeof(arr[0]))
+
+
+
+typedef struct trv_device_params_s {
+    esp_zb_ieee_addr_t ieee_addr;
+    uint8_t  endpoint;
+    uint16_t short_addr;
+} trv_device_params_t;
+
+static trv_device_params_t trv;
 
 static const char *TAG = "ZIGBEE";
-static zigbee_device_t stored_devices[MAX_TRV_DEVICES + MAX_WINDOW_SENSORS];
-static uint8_t stored_device_count = 0;
+
+// Define the global array
+zigbee_device_t stored_devices[MAX_TRV_DEVICES + MAX_WINDOW_SENSORS];
+
+uint8_t stored_device_count = 0;
 static uint8_t trv_count = 0;
 static uint8_t window_sensor_count = 0;
 bool network_open = false;
@@ -239,46 +257,135 @@ bool is_network_open(void)
     return network_open;
 }
 
-static device_type_t identify_device_type(esp_zb_zdo_signal_device_annce_params_t *params)
+
+static void bind_trv_cb(esp_zb_zdp_status_t zdo_status, void *user_ctx)
 {
-    ESP_LOGI(TAG, "Identifying device type for device 0x%04x", params->device_short_addr);
-    ESP_LOGI(TAG, "Capabilities: 0x%02x", params->capability);
-    ESP_LOGI(TAG, "MAC Address: %02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x",
-             params->ieee_addr[7], params->ieee_addr[6], params->ieee_addr[5], params->ieee_addr[4],
-             params->ieee_addr[3], params->ieee_addr[2], params->ieee_addr[1], params->ieee_addr[0]);
+    esp_zb_zdo_bind_req_param_t *bind_req = (esp_zb_zdo_bind_req_param_t *)user_ctx;
 
-    // From your logs:
-    // Window sensor MAC: a4:c1:38:7e:04:08:55:c2
-    // TRV MAC: 34:10:f4:ff:fe:e1:90:f3
-    
-    // Identify TRV by its unique MAC prefix
-    if (params->ieee_addr[7] == 0x34 && params->ieee_addr[6] == 0x10) {
-        ESP_LOGI(TAG, "Identified TRV by MAC address prefix");
-        return DEVICE_TYPE_TRV;
+    if (zdo_status == ESP_ZB_ZDP_STATUS_SUCCESS) {
+        /* Local binding succeeds */
+        if (bind_req->req_dst_addr == esp_zb_get_short_address()) {
+            ESP_LOGI(TAG, "Trv bound to controller from sensor address(0x%x) on controller endpoint(%d)",
+                     trv.short_addr, trv.endpoint);
+
+            /* Read peer Manufacture Name & Model Identifier */
+            esp_zb_zcl_read_attr_cmd_t read_req = {0};
+            read_req.address_mode = ESP_ZB_APS_ADDR_MODE_16_ENDP_PRESENT;
+            read_req.zcl_basic_cmd.src_endpoint = HA_THERMOSTAT_ENDPOINT;
+            read_req.zcl_basic_cmd.dst_endpoint = trv.endpoint;
+            read_req.zcl_basic_cmd.dst_addr_u.addr_short = trv.short_addr;
+            read_req.clusterID = ESP_ZB_ZCL_CLUSTER_ID_BASIC;
+
+            uint16_t attributes[] = {
+                ESP_ZB_ZCL_ATTR_BASIC_MANUFACTURER_NAME_ID,
+                ESP_ZB_ZCL_ATTR_BASIC_MODEL_IDENTIFIER_ID,
+            };
+            read_req.attr_number = ARRAY_LENGTH(attributes);
+            read_req.attr_field = attributes;
+
+            esp_zb_zcl_read_attr_cmd_req(&read_req);
+        }
+        if (bind_req->req_dst_addr == trv.short_addr) {
+            ESP_LOGI(TAG, "Controller bound to trv on sensor endpoint(%d)",
+                     trv.short_addr, trv.endpoint);
+        }
+        free(bind_req);
     }
-    
-    // Identify Window sensor by its unique MAC prefix
-    if (params->ieee_addr[7] == 0xa4 && params->ieee_addr[6] == 0xc1) {
-        ESP_LOGI(TAG, "Identified Window Sensor by MAC address prefix");
-        return DEVICE_TYPE_WINDOW_SENSOR;
+    else {
+        /* Bind failed, maybe retry the binding ? */
+
+        // esp_zb_zdo_device_bind_req(bind_req, bind_cb, bind_req);
     }
-
-    // Fallback identification using raw capability byte
-    ESP_LOGI(TAG, "MAC address not recognized, using raw capability byte: 0x%02x", params->capability);
-    ESP_LOGI(TAG, "Raw capabilities breakdown:");
-    ESP_LOGI(TAG, "Bit 7 (0x80): %d", (params->capability & 0x80) ? 1 : 0);
-    ESP_LOGI(TAG, "Bit 6 (0x40): %d", (params->capability & 0x40) ? 1 : 0);
-    ESP_LOGI(TAG, "Bit 5 (0x20): %d", (params->capability & 0x20) ? 1 : 0);
-    ESP_LOGI(TAG, "Bit 4 (0x10): %d", (params->capability & 0x10) ? 1 : 0);
-    ESP_LOGI(TAG, "Bit 3 (0x08): %d", (params->capability & 0x08) ? 1 : 0);
-    ESP_LOGI(TAG, "Bit 2 (0x04): %d", (params->capability & 0x04) ? 1 : 0);
-    ESP_LOGI(TAG, "Bit 1 (0x02): %d", (params->capability & 0x02) ? 1 : 0);
-    ESP_LOGI(TAG, "Bit 0 (0x01): %d", (params->capability & 0x01) ? 1 : 0);
-
-    // Default to Window Sensor as fallback
-    ESP_LOGW(TAG, "Could not definitively identify device type, defaulting to Window Sensor");
-    return DEVICE_TYPE_WINDOW_SENSOR;
 }
+static void find_trv_cb(esp_zb_zdp_status_t zdo_status, uint16_t peer_addr, uint8_t peer_endpoint, void *user_ctx)
+{
+    if (zdo_status == ESP_ZB_ZDP_STATUS_SUCCESS) {
+        ESP_LOGI(TAG, "Device identified as TRV");
+        ESP_LOGI(TAG, "Found TRV device at address 0x%04x, endpoint %d", peer_addr, peer_endpoint);
+
+        // Store device info with correct address
+        trv_device_params_t *sensor = (trv_device_params_t *)user_ctx;
+        if (!sensor) {
+            ESP_LOGE(TAG, "Invalid user context");
+            return;
+        }
+        sensor->endpoint = peer_endpoint;
+        sensor->short_addr = peer_addr;
+        esp_zb_ieee_address_by_short(sensor->short_addr, sensor->ieee_addr);
+
+        /* 1. Send binding request to the sensor */
+        esp_zb_zdo_bind_req_param_t *bind_req = (esp_zb_zdo_bind_req_param_t *)calloc(1, sizeof(esp_zb_zdo_bind_req_param_t));
+    
+        bind_req->req_dst_addr = peer_addr;
+
+        /* populate the src information of the binding */
+        memcpy(bind_req->src_address, sensor->ieee_addr, sizeof(esp_zb_ieee_addr_t));
+        bind_req->src_endp = peer_endpoint;
+        bind_req->cluster_id = ESP_ZB_ZCL_CLUSTER_ID_TEMP_MEASUREMENT;
+
+        /* populate the dst information of the binding */
+        bind_req->dst_addr_mode = ESP_ZB_ZDO_BIND_DST_ADDR_MODE_64_BIT_EXTENDED;
+        esp_zb_get_long_address(bind_req->dst_address_u.addr_long);
+        bind_req->dst_endp = HA_THERMOSTAT_ENDPOINT;
+
+        ESP_LOGI(TAG, "Binding TRV to coordinator (receive data)");
+        esp_zb_zdo_device_bind_req(bind_req, bind_trv_cb, bind_req);
+
+        /* 2. Send binding request to self */
+        bind_req = (esp_zb_zdo_bind_req_param_t *)calloc(1, sizeof(esp_zb_zdo_bind_req_param_t));
+    
+        bind_req->req_dst_addr = esp_zb_get_short_address();
+
+        /* populate the src information of the binding */
+        esp_zb_get_long_address(bind_req->src_address);
+        bind_req->src_endp = HA_THERMOSTAT_ENDPOINT;
+        bind_req->cluster_id = ESP_ZB_ZCL_CLUSTER_ID_TEMP_MEASUREMENT;
+
+        /* populate the dst information of the binding */
+        bind_req->dst_addr_mode = ESP_ZB_ZDO_BIND_DST_ADDR_MODE_64_BIT_EXTENDED;
+        memcpy(bind_req->dst_address_u.addr_long, sensor->ieee_addr, sizeof(esp_zb_ieee_addr_t));
+        bind_req->dst_endp = peer_endpoint;
+
+        ESP_LOGI(TAG, "Binding coordinator to trv (send commands)");
+        esp_zb_zdo_device_bind_req(bind_req, bind_trv_cb, bind_req);
+
+        /* 3. save device to nvs */
+
+         device_type_t dev_type = DEVICE_TYPE_TRV;
+
+        // Prepare the device structure
+        zigbee_device_t new_device = {
+            .type = DEVICE_TYPE_TRV,
+            .short_addr = peer_addr,
+            .endpoint = peer_endpoint,
+        };
+
+        snprintf(new_device.name, MAX_DEVICE_NAME_LENGTH, "%s_%d",
+                 dev_type == DEVICE_TYPE_TRV ? "TRV" : "WINDOW",
+                 dev_type == DEVICE_TYPE_TRV ? ++trv_count : ++window_sensor_count);
+
+        // Save the device to
+        if (save_device_to_nvs(&new_device) == ESP_OK) {
+            ui_event_t event = {
+                .target_screen = SCREEN_BOOT,
+                .message = "Device paired successfully"
+            };
+            xQueueSend(ui_event_queue, &event, 0);
+            ESP_LOGI(TAG, "Device saved as %s", new_device.name);
+        }
+    }
+}
+
+static void find_trv(esp_zb_zdo_match_desc_req_param_t *param, esp_zb_zdo_match_desc_callback_t callback, void *user_ctx)
+{
+    uint16_t cluster_list[] = {ESP_ZB_ZCL_CLUSTER_ID_TEMP_MEASUREMENT};
+    param->profile_id = ESP_ZB_AF_HA_PROFILE_ID;
+    param->num_in_clusters = 1;
+    param->num_out_clusters = 0;
+    param->cluster_list = cluster_list;
+    esp_zb_zdo_match_cluster(param, callback, user_ctx ? user_ctx : (void *)&trv);
+}
+    
 
 void zigbee_signal_handler(esp_zb_app_signal_t *signal_struct)
 {
@@ -427,6 +534,7 @@ void zigbee_signal_handler(esp_zb_app_signal_t *signal_struct)
 
         case ESP_ZB_ZDO_SIGNAL_DEVICE_ANNCE: {
             dev_annce_params = (esp_zb_zdo_signal_device_annce_params_t *)esp_zb_app_signal_get_params(p_sg_p);
+
             if (device_exists(dev_annce_params->device_short_addr)) {
                 ui_event_t event = {
                     .target_screen = SCREEN_BOOT,
@@ -437,51 +545,22 @@ void zigbee_signal_handler(esp_zb_app_signal_t *signal_struct)
                 break;
             }
 
-            ESP_LOGI(TAG, "New device joining network (short: 0x%04x)", 
-                    dev_annce_params->device_short_addr);
+            ESP_LOGI(TAG, "New device joining network (short: 0x%04x)", dev_annce_params->device_short_addr);
 
-            device_type_t dev_type = identify_device_type(dev_annce_params);
-            if ((dev_type == DEVICE_TYPE_TRV && stored_device_count >= MAX_TRV_DEVICES) ||
-                (dev_type == DEVICE_TYPE_WINDOW_SENSOR && stored_device_count >= MAX_WINDOW_SENSORS)) {
-                ui_event_t event = {
-                    .target_screen = SCREEN_BOOT,
-                    .message = "Maximum devices of this type reached"
-                };
-                xQueueSend(ui_event_queue, &event, 0);
-                ESP_LOGW(TAG, "Maximum devices of this type reached");
+            trv_device_params_t *new_trv = calloc(1, sizeof(trv_device_params_t));
+            if (!new_trv) {
+                ESP_LOGE(TAG, "Failed to allocate memory for TRV params");
                 break;
             }
-
-            zigbee_device_t new_device = {
-                .type = dev_type,
-                .short_addr = dev_annce_params->device_short_addr,
-                .endpoint = 1
-            };
-
-            snprintf(new_device.name, MAX_DEVICE_NAME_LENGTH, "%s_%d", 
-                dev_type == DEVICE_TYPE_TRV ? "TRV" : "WINDOW", 
-                dev_type == DEVICE_TYPE_TRV ? ++trv_count : ++window_sensor_count);
-
-            if (save_device_to_nvs(&new_device) == ESP_OK) {
-                ui_event_t event = {
-                    .target_screen = SCREEN_BOOT,
-                    .message = "Device paired successfully"
-                };
-                xQueueSend(ui_event_queue, &event, 0);
-                ESP_LOGI(TAG, "Device saved as %s", new_device.name);
-                
-                if (stored_device_count >= (MAX_TRV_DEVICES + MAX_WINDOW_SENSORS)) {
-                    close_network();
-                    ui_event_t close_event = {
-                        .target_screen = SCREEN_BOOT
-                    };
-                    strncpy(close_event.message, "All devices paired, network closed", 64);
-                    xQueueSend(ui_event_queue, &close_event, 0);
-                }
-            }
+            
+            esp_zb_zdo_match_desc_req_param_t cmd_req;
+            cmd_req.dst_nwk_addr = dev_annce_params->device_short_addr;
+            cmd_req.addr_of_interest = dev_annce_params->device_short_addr;
+            find_trv(&cmd_req, find_trv_cb, new_trv);  // Pass the new context
+            //find_window_sensor(&cmd_req, find_window_sensor_cb, new_window_sensor);  // Pass the new context
             break;
         }
-
+    
         case ESP_ZB_ZDO_SIGNAL_DEVICE_AUTHORIZED: {
             esp_zb_zdo_signal_device_authorized_params_t *auth_params = 
                 (esp_zb_zdo_signal_device_authorized_params_t*)esp_zb_app_signal_get_params(p_sg_p);
@@ -501,22 +580,23 @@ void zigbee_signal_handler(esp_zb_app_signal_t *signal_struct)
                     break;
                 }
             }
+            
             break;
         }
         case ESP_ZB_NWK_SIGNAL_DEVICE_ASSOCIATED:  // 0x12
-        ESP_LOGI(TAG, "Device associated with network");
+            ESP_LOGI(TAG, "Device associated with network");
         break;
 
-    case ESP_ZB_ZDO_SIGNAL_DEVICE_UPDATE:  // 0x30
-        ESP_LOGI(TAG, "Device update notification received");
+        case ESP_ZB_ZDO_SIGNAL_DEVICE_UPDATE:  // 0x30
+            ESP_LOGI(TAG, "Device update notification received");
         break;
 
-    case ESP_ZB_NLME_STATUS_INDICATION:  // 0x32
-        ESP_LOGI(TAG, "Device authentication in progress");
+        case ESP_ZB_NLME_STATUS_INDICATION:  // 0x32
+            ESP_LOGI(TAG, "Device Status Indication received");
         break;
   
- case ESP_ZB_BDB_SIGNAL_DEVICE_REBOOT://0x06
-        ESP_LOGI(TAG, "Device reboot signal received");
+        case ESP_ZB_BDB_SIGNAL_DEVICE_REBOOT://0x06
+            ESP_LOGI(TAG, "Device reboot signal received");
         break;
 
       

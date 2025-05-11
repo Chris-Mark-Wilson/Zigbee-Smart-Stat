@@ -1,6 +1,7 @@
 #files to exclude
 #ignore build directory
 build/
+examples/
 #ignore all .log files
 *.log
 #ignore all .tmp files
