@@ -275,7 +275,9 @@ static void dht_sensor_task(void *pvParameters)
     }
 }
 
-//do not delete, needed to bind trv for two way communication
+//do not delete, needed to bind trv for two way communication 
+//Adds IAS Zone cluster to the endpoint
+//and adds the temperature measurement cluster for attribute reporting
 static esp_zb_cluster_list_t *custom_thermostat_clusters_create(esp_zb_thermostat_cfg_t *thermostat)
 {
     esp_zb_cluster_list_t *cluster_list = esp_zb_zcl_cluster_list_create();
@@ -296,7 +298,8 @@ static esp_zb_cluster_list_t *custom_thermostat_clusters_create(esp_zb_thermosta
 
     return cluster_list;
 }
-//do not delete, needed to bind trv for two way communication
+//do not delete, needed to bind trv for two way communication and IAS zone cluster
+//creates the endpoint and adds the clusters to it
 static esp_zb_ep_list_t *custom_thermostat_ep_create(uint8_t endpoint_id, esp_zb_thermostat_cfg_t *thermostat)
 {
     esp_zb_ep_list_t *ep_list = esp_zb_ep_list_create();
@@ -317,8 +320,8 @@ static void zigbee_task(void *pvParameters)
     esp_zb_init(&zb_nwk_cfg);
 
     /* Create customized thermostat endpoint */
-    //identifies the coordinator as a custom therostat device
-    //esential for proper device identification, supposrting temp related clusters and enabling bi direction communication with the trv
+    //identifies the coordinator as a custom thermostat device
+    //esential for proper device identification, supporting temp related clusters and enabling bi direction communication with the trv
     esp_zb_thermostat_cfg_t thermostat_cfg = ESP_ZB_DEFAULT_THERMOSTAT_CONFIG();
     esp_zb_ep_list_t *esp_zb_thermostat_ep = custom_thermostat_ep_create(HA_THERMOSTAT_ENDPOINT, &thermostat_cfg);
 
@@ -331,8 +334,8 @@ static void zigbee_task(void *pvParameters)
     esp_zb_core_action_handler_register(zb_action_handler);
 
     esp_zb_set_primary_network_channel_set(ESP_ZB_PRIMARY_CHANNEL_MASK);
-    ESP_ERROR_CHECK(esp_zb_start(false));
     // Start Zigbee stack with autostart
+    ESP_ERROR_CHECK(esp_zb_start(false));
   
 
     // Enter Zigbee main loop
@@ -561,5 +564,5 @@ void app_main(void)
     xTaskCreate(zigbee_task, "Zigbee_main", 4096, NULL, 5, NULL);
     xTaskCreate(hmmd_read_task, "HMMD_read", 2048, NULL, 4, NULL);
     xTaskCreate(dht_sensor_task, "DHT_sensor", 2048, NULL, 4, NULL);
-    // xTaskCreate(dht_sensor_task, "DHT_sensor", 2048, NULL, 4, NULL);
+   
 }
