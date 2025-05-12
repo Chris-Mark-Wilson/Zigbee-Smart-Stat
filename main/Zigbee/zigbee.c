@@ -38,6 +38,7 @@ uint8_t stored_device_count = 0;
 static uint8_t trv_count = 0;
 static uint8_t window_sensor_count = 0;
 bool network_open = false;
+static uint8_t last_config_tsn = 0;//tracking the last transaction sequence number for config report command
 
 extern QueueHandle_t ui_event_queue;
 
@@ -257,6 +258,16 @@ bool is_network_open(void)
     return network_open;
 }
 
+void esp_zb_zcl_config_report_cb(esp_zb_zcl_command_send_status_message_t message) 
+{
+    if (message.tsn == last_config_tsn) {
+        if (message.status == ESP_OK) {
+            ESP_LOGI(TAG, "Config report command accepted by sensor");
+        } else {
+            ESP_LOGE(TAG, "Config report command failed: %s", esp_err_to_name(message.status));
+        }
+    }
+}
 
 static void bind_trv_cb(esp_zb_zdp_status_t zdo_status, void *user_ctx)
 {
@@ -384,6 +395,172 @@ static void find_trv(esp_zb_zdo_match_desc_req_param_t *param, esp_zb_zdo_match_
     param->num_out_clusters = 0;
     param->cluster_list = cluster_list;
     esp_zb_zdo_match_cluster(param, callback, user_ctx ? user_ctx : (void *)&trv);
+}
+
+
+// Add after the bind success:
+void read_window_sensor_status(uint16_t addr, uint8_t endpoint) {
+    esp_zb_zcl_read_attr_cmd_t read_req = {
+        .zcl_basic_cmd = {
+            .dst_addr_u.addr_short = addr,
+            .dst_endpoint = endpoint,
+            .src_endpoint = HA_THERMOSTAT_ENDPOINT,
+        },
+        .address_mode = ESP_ZB_APS_ADDR_MODE_16_ENDP_PRESENT,
+        .clusterID = ESP_ZB_ZCL_CLUSTER_ID_IAS_ZONE,
+        .attr_number = 1,
+        .attr_field = &(esp_zb_zcl_attribute_t){
+            .id = ESP_ZB_ZCL_ATTR_IAS_ZONE_ZONESTATUS_ID,
+        }
+    };
+    
+    ESP_LOGI(TAG, "Reading window sensor status");
+    esp_zb_zcl_read_attr_cmd_req(&read_req);
+}
+
+
+static void bind_window_sensor_cb(esp_zb_zdp_status_t zdo_status, void *user_ctx)
+{
+    esp_zb_zdo_bind_req_param_t *bind_req = (esp_zb_zdo_bind_req_param_t *)user_ctx;
+
+    ESP_LOGI(TAG, "Window sensor binding callback triggered with status: 0x%x", zdo_status);
+    ESP_LOGI(TAG, "Bind request details - dst: 0x%04x, src_ep: %d, dst_ep: %d", 
+             bind_req->req_dst_addr, bind_req->src_endp, bind_req->dst_endp);
+
+    if (zdo_status == ESP_ZB_ZDP_STATUS_SUCCESS) {
+        ESP_LOGI(TAG, "Window sensor bound successfully");
+        ESP_LOGI(TAG, "Coordinator address: 0x%04x", esp_zb_get_short_address());
+        
+        // Create record for IAS Zone status reporting
+        esp_zb_zcl_config_report_record_t report_record = {
+            .direction = ESP_ZB_ZCL_REPORT_DIRECTION_SEND,    // Sensor should SEND reports
+            .attributeID = ESP_ZB_ZCL_ATTR_IAS_ZONE_ZONESTATUS_ID,
+            .attrType = ESP_ZB_ZCL_ATTR_TYPE_8BITMAP,
+            .min_interval = 0,     // Send immediately when state changes
+            .max_interval = 60,    // If no changes, report at least every 60 seconds
+            .reportable_change = NULL  // Not used for discrete data types
+        };
+
+        // Configure reporting command
+        esp_zb_zcl_config_report_cmd_t report_cmd = {
+            .zcl_basic_cmd = {
+                .dst_addr_u.addr_short = bind_req->req_dst_addr,
+                .dst_endpoint = bind_req->src_endp,
+                .src_endpoint = bind_req->dst_endp,
+            },
+            .address_mode = ESP_ZB_APS_ADDR_MODE_16_ENDP_PRESENT,
+            .clusterID = ESP_ZB_ZCL_CLUSTER_ID_IAS_ZONE,
+            .direction = ESP_ZB_ZCL_CMD_DIRECTION_TO_SRV,
+            .dis_defalut_resp = 0,
+            .manuf_specific = 0,
+            .manuf_code = 0,
+            .record_number = 1,
+            .record_field = &report_record
+        };
+        ESP_LOGI(TAG, "Configuring IAS Zone reporting for window sensor");
+        uint8_t tsn = esp_zb_zcl_config_report_cmd_req(&report_cmd);
+        if (tsn == 0) {
+            ESP_LOGW(TAG, "Config report command returned 0 TSN - this may be normal");
+        } else {
+            last_config_tsn = tsn;
+            ESP_LOGI(TAG, "Config report command sent with TSN: %d", tsn);
+        }
+
+        // Send read request to get initial status
+        read_window_sensor_status(stored_devices[window_sensor_count - 1].short_addr,
+            stored_devices[window_sensor_count - 1].endpoint);
+    } else {
+        ESP_LOGE(TAG, "Window sensor binding failed with status: 0x%x", zdo_status);
+    }
+    free(bind_req);
+}
+static void find_window_sensor_cb(esp_zb_zdp_status_t zdo_status, uint16_t peer_addr, uint8_t peer_endpoint, void *user_ctx)
+{
+   
+
+        ESP_LOGI(TAG, "Window sensor callback triggered:");
+        ESP_LOGI(TAG, "  Status: 0x%x", zdo_status);
+        ESP_LOGI(TAG, "  Address: 0x%04x", peer_addr);
+        ESP_LOGI(TAG, "  Endpoint: %d", peer_endpoint);
+        
+        if (zdo_status == ESP_ZB_ZDP_STATUS_SUCCESS) {
+            if (peer_addr == 0xFFFF || peer_endpoint == 0xFF) {
+                ESP_LOGW(TAG, "Invalid address/endpoint received despite success status");
+                return;
+            }
+        ESP_LOGI(TAG, "Device identified as Window Sensor");
+        ESP_LOGI(TAG, "Found Window Sensor at address 0x%04x, endpoint %d", peer_addr, peer_endpoint);
+
+        // Send binding request
+        esp_zb_zdo_bind_req_param_t *bind_req = (esp_zb_zdo_bind_req_param_t *)calloc(1, sizeof(esp_zb_zdo_bind_req_param_t));
+        if (!bind_req) {
+            ESP_LOGE(TAG, "Failed to allocate bind request");
+            return;
+        }
+        
+        // Only proceed if device isn't already bound
+        if (!device_exists(peer_addr)) {
+            bind_req->req_dst_addr = peer_addr;
+            esp_zb_ieee_address_by_short(peer_addr, bind_req->src_address);
+            bind_req->src_endp = peer_endpoint;
+            bind_req->cluster_id = ESP_ZB_ZCL_CLUSTER_ID_IAS_ZONE;
+            bind_req->dst_addr_mode = ESP_ZB_ZDO_BIND_DST_ADDR_MODE_64_BIT_EXTENDED;
+            esp_zb_get_long_address(bind_req->dst_address_u.addr_long);
+            bind_req->dst_endp = HA_THERMOSTAT_ENDPOINT;
+
+            ESP_LOGI(TAG, "Binding Window Sensor to coordinator");
+            ESP_LOGI(TAG, "Sending bind request - addr: 0x%04x, ep: %d, cluster: 0x%04x", 
+                peer_addr, peer_endpoint, ESP_ZB_ZCL_CLUSTER_ID_IAS_ZONE);
+            esp_zb_zdo_device_bind_req(bind_req, bind_window_sensor_cb, bind_req);
+
+            // Save device
+            zigbee_device_t new_device = {
+                .type = DEVICE_TYPE_WINDOW_SENSOR,
+                .short_addr = peer_addr,
+                .endpoint = peer_endpoint,
+                .last_seen = esp_timer_get_time() / 1000
+            };
+
+            snprintf(new_device.name, MAX_DEVICE_NAME_LENGTH, "WINDOW_%d", ++window_sensor_count);
+
+            if (save_device_to_nvs(&new_device) == ESP_OK) {
+                ui_event_t event = {
+                    .target_screen = SCREEN_BOOT,
+                    .message = "Window sensor paired successfully"
+                };
+                xQueueSend(ui_event_queue, &event, 0);
+                ESP_LOGI(TAG, "Window sensor saved as %s", new_device.name);
+            }
+        }
+    }else {
+        ESP_LOGW(TAG, "Window sensor match failed with status: 0x%x", zdo_status);
+    }
+}
+
+static void find_window_sensor(esp_zb_zdo_match_desc_req_param_t *param, esp_zb_zdo_match_desc_callback_t callback, void *user_ctx)
+{
+    // uint16_t cluster_list[] = {ESP_ZB_ZCL_CLUSTER_ID_ON_OFF}; // Window sensors typically use OnOff cluster
+
+    uint16_t cluster_list[] = {
+        ESP_ZB_ZCL_CLUSTER_ID_IAS_ZONE,        // 0x0500
+        ESP_ZB_ZCL_CLUSTER_ID_BINARY_INPUT,    // 0x000F
+        ESP_ZB_ZCL_CLUSTER_ID_DOOR_LOCK        // 0x0101
+    };
+    
+    param->profile_id = ESP_ZB_AF_HA_PROFILE_ID;
+    param->num_in_clusters = ARRAY_LENGTH(cluster_list);
+    param->num_out_clusters = 0;
+    param->cluster_list = cluster_list;
+
+    ESP_LOGI(TAG, "Trying to identify window sensor at addr 0x%04x", param->dst_nwk_addr);
+    ESP_LOGI(TAG, "Using profile 0x%04x, searching for window sensor clusters", param->profile_id);
+    
+    esp_err_t err = esp_zb_zdo_match_cluster(param, callback, user_ctx);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to send window sensor match descriptor request: %s", esp_err_to_name(err));
+    } else {
+        ESP_LOGI(TAG, "Window sensor match descriptor request sent successfully");
+    }
 }
     
 
@@ -534,30 +711,37 @@ void zigbee_signal_handler(esp_zb_app_signal_t *signal_struct)
 
         case ESP_ZB_ZDO_SIGNAL_DEVICE_ANNCE: {
             dev_annce_params = (esp_zb_zdo_signal_device_annce_params_t *)esp_zb_app_signal_get_params(p_sg_p);
-
-            if (device_exists(dev_annce_params->device_short_addr)) {
+            uint16_t new_addr = dev_annce_params->device_short_addr;
+        
+            if (device_exists(new_addr)) {
                 ui_event_t event = {
                     .target_screen = SCREEN_BOOT,
                     .message = "Device rejoined network"
                 };
                 xQueueSend(ui_event_queue, &event, 0);
-                ESP_LOGI(TAG, "Device 0x%04x rejoined network", dev_annce_params->device_short_addr);
+                ESP_LOGI(TAG, "Device 0x%04x rejoined network", new_addr);
                 break;
             }
-
-            ESP_LOGI(TAG, "New device joining network (short: 0x%04x)", dev_annce_params->device_short_addr);
-
-            trv_device_params_t *new_trv = calloc(1, sizeof(trv_device_params_t));
-            if (!new_trv) {
-                ESP_LOGE(TAG, "Failed to allocate memory for TRV params");
-                break;
-            }
+        
+            ESP_LOGI(TAG, "New device joining network (short: 0x%04x)", new_addr);
             
-            esp_zb_zdo_match_desc_req_param_t cmd_req;
-            cmd_req.dst_nwk_addr = dev_annce_params->device_short_addr;
-            cmd_req.addr_of_interest = dev_annce_params->device_short_addr;
-            find_trv(&cmd_req, find_trv_cb, new_trv);  // Pass the new context
-            //find_window_sensor(&cmd_req, find_window_sensor_cb, new_window_sensor);  // Pass the new context
+            esp_zb_zdo_match_desc_req_param_t cmd_req = {
+                .dst_nwk_addr = new_addr,
+                .addr_of_interest = new_addr
+            };
+
+              // Try to identify as window sensor first (simpler device)
+    find_window_sensor(&cmd_req, find_window_sensor_cb, NULL);
+
+    // If that fails (no response after timeout), try as TRV
+    // vTaskDelay(pdMS_TO_TICKS(1000));  // Give window sensor check time to complete
+    
+    // if (!device_exists(new_addr)) {
+    //     trv_device_params_t *new_trv = calloc(1, sizeof(trv_device_params_t));
+    //     if (new_trv) {
+    //         find_trv(&cmd_req, find_trv_cb, new_trv);
+    //     }
+    // }
             break;
         }
     

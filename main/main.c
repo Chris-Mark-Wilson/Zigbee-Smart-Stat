@@ -36,7 +36,7 @@ static bool g_presence_detected = false; // Global presence state
 static bool g_trv_state = false;  // Track TRV state
 
 // Temperature control variables (in hundredths of degrees)
-static int16_t g_target_temp = 2400;     // 21.00°C
+static int16_t g_target_temp = 2000;     // 20.00°C
 static int16_t g_min_temp = 1600;        // 16.00°C
 static int16_t g_max_temp = 2400;        // 24.00°C
 
@@ -63,44 +63,34 @@ void esp_zb_app_signal_handler(esp_zb_app_signal_t *signal_struct)
 //handle window sensor state change
 static esp_err_t zb_attribute_handler(const esp_zb_zcl_set_attr_value_message_t *message)
 {
-      static const char *TAG = "ZB_ATTR_HANDLER";
-    ESP_LOGI(TAG, "Zigbee attribute handler called with message: %p", message);
+    static const char *TAG = "ZB_ATTR_HANDLER";
+    ESP_LOGI(TAG, "Attribute handler called with message: %p", message);
     esp_err_t ret = ESP_OK;
 
-    ESP_RETURN_ON_FALSE(message, ESP_FAIL, TAG, "Empty message");
-    ESP_RETURN_ON_FALSE(message->info.status == ESP_ZB_ZCL_STATUS_SUCCESS, ESP_ERR_INVALID_ARG, TAG, "Received message: error status(%d)",
-                        message->info.status);
+    if (!message) {
+        ESP_LOGE(TAG, "Empty message received");
+        return ESP_FAIL;
+    }
 
-    ESP_LOGI(TAG, "Received message: endpoint(%d), cluster(0x%x), attribute(0x%x), data size(%d)", 
-             message->info.dst_endpoint, message->info.cluster, message->attribute.id, message->attribute.data.size);
+    ESP_LOGI(TAG, "Attribute details:");
+    ESP_LOGI(TAG, "  Endpoint: %d", message->info.dst_endpoint);
+    ESP_LOGI(TAG, "  Cluster: 0x%04x", message->info.cluster);
+    ESP_LOGI(TAG, "  Attribute ID: 0x%04x", message->attribute.id);
+    ESP_LOGI(TAG, "  Status: 0x%02x", message->info.status);
 
-    // Check if the message is from the window sensor's endpoint
-    if (message->info.dst_endpoint == 1) {  // Assuming endpoint 1 is the window sensor
-        // Handle IAS Zone Cluster (0x0500)
-        if (message->info.cluster == ESP_ZB_ZCL_CLUSTER_ID_IAS_ZONE) {
-            if (message->attribute.id == ESP_ZB_ZCL_ATTR_IAS_ZONE_ZONESTATUS_ID) {
-                uint16_t zone_status = *(uint16_t *)message->attribute.data.value;
-                ESP_LOGI(TAG, "Window sensor zone status: 0x%04x", zone_status);
-
-                // Check zone status bitmask
-                if (zone_status & 0x0001) {
-                    ESP_LOGI(TAG, "Window is OPEN");
-                    g_is_window_open = true;
-                } else {
-                    ESP_LOGI(TAG, "Window is CLOSED");
-                    g_is_window_open = false;
-                }
-            }
-        }
-
-        // Handle On/Off Cluster (0x0006) as an alternative
-        if (message->info.cluster == ESP_ZB_ZCL_CLUSTER_ID_ON_OFF) {
-            if (message->attribute.id == ESP_ZB_ZCL_ATTR_ON_OFF_ON_OFF_ID && 
-                message->attribute.data.type == ESP_ZB_ZCL_ATTR_TYPE_BOOL) {
-                bool window_state = *(bool *)message->attribute.data.value;
-                ESP_LOGI(TAG, "Window state: %s", window_state ? "OPEN" : "CLOSED");
-                g_is_window_open = window_state;
-            }
+    // Handle any endpoint (not just endpoint 1)
+    if (message->info.cluster == ESP_ZB_ZCL_CLUSTER_ID_IAS_ZONE) {
+        if (message->attribute.id == ESP_ZB_ZCL_ATTR_IAS_ZONE_ZONESTATUS_ID) {
+            uint16_t zone_status = *(uint16_t *)message->attribute.data.value;
+            ESP_LOGI(TAG, "  Zone status: 0x%04x", zone_status);
+            g_is_window_open = (zone_status & 0x0001);
+            
+            // Trigger UI update
+            ui_event_t event = {
+                .target_screen = SCREEN_MAIN,
+                .message = ""
+            };
+            xQueueSend(ui_event_queue, &event, 0);
         }
     }
 
@@ -111,8 +101,13 @@ static esp_err_t zb_action_handler(esp_zb_core_action_callback_id_t callback_id,
     static const char *TAG = "ZB_ACTION_HANDLER";
     esp_err_t ret = ESP_OK;
     
+        // Enhanced callback logging
+        ESP_LOGI(TAG, "Action handler called with callback ID: 0x%04x, message: %p", callback_id, message);
+
+
     switch (callback_id) {
         case ESP_ZB_CORE_SET_ATTR_VALUE_CB_ID:
+        ESP_LOGI(TAG, "SET_ATTR_VALUE callback received");
             ret = zb_attribute_handler((esp_zb_zcl_set_attr_value_message_t *)message);
             break;
             
@@ -121,15 +116,45 @@ static esp_err_t zb_action_handler(esp_zb_core_action_callback_id_t callback_id,
             // Handle attribute reading response
             break;
             
-        case ESP_ZB_CORE_REPORT_ATTR_CB_ID:  // 0x2000
-            ESP_LOGI(TAG, "Attribute report received");
-            // Handle attribute reporting
-            if (message) {
-                const esp_zb_zcl_report_attr_message_t *report = (esp_zb_zcl_report_attr_message_t *)message;
-                ESP_LOGI(TAG, "Received report from addr: 0x%04x, cluster: 0x%04x", 
-                    report->src_address.u.short_addr, report->cluster);
+        case ESP_ZB_CORE_REPORT_ATTR_CB_ID:
+        ESP_LOGI(TAG, "REPORT_ATTR callback received");
+        if (message) {
+            const esp_zb_zcl_report_attr_message_t *report = 
+                (esp_zb_zcl_report_attr_message_t *)message;
+            ESP_LOGI(TAG, "Report details:");
+            ESP_LOGI(TAG, "  Source addr: 0x%04x", report->src_address.u.short_addr);
+            ESP_LOGI(TAG, "  Source endpoint: %d", report->src_endpoint);
+            ESP_LOGI(TAG, "  Cluster: 0x%04x", report->cluster);
+            ESP_LOGI(TAG, "  Attribute ID: 0x%04x", report->attribute.id);
+            
+            // Check for IAS Zone cluster (0x0500)
+            if (report->cluster == ESP_ZB_ZCL_CLUSTER_ID_IAS_ZONE) {
+                if (report->attribute.id == ESP_ZB_ZCL_ATTR_IAS_ZONE_ZONESTATUS_ID) {
+                    uint16_t zone_status = *(uint16_t *)report->attribute.data.value;
+                    ESP_LOGI(TAG, "  Zone status: 0x%04x", zone_status);
+                    g_is_window_open = (zone_status & 0x0001);
+                    
+                    // Trigger UI update
+                    ui_event_t event = {
+                        .target_screen = SCREEN_MAIN,
+                        .message = ""
+                    };
+                    xQueueSend(ui_event_queue, &event, 0);
+                }
             }
-            break;
+        }
+        break;
+
+        case ESP_ZB_CORE_CMD_DEFAULT_RESP_CB_ID:
+        ESP_LOGI(TAG, "DEFAULT_RESP callback received");
+        if (message) {
+            const esp_zb_zcl_cmd_default_resp_message_t *resp = 
+                (esp_zb_zcl_cmd_default_resp_message_t *)message;
+            ESP_LOGI(TAG, "Default response details:");
+            ESP_LOGI(TAG, "  Status: 0x%02x", resp->status_code);
+            ESP_LOGI(TAG, "  Cluster: 0x%04x", resp->info.cluster);
+        }
+        break;
                         
         case ESP_ZB_CORE_CMD_WRITE_ATTR_RESP_CB_ID:  // 0x1001
         ESP_LOGI(TAG, "Write attribute response received");
@@ -139,6 +164,45 @@ static esp_err_t zb_action_handler(esp_zb_core_action_callback_id_t callback_id,
             ESP_LOGI(TAG, "Write response status: 0x%02x", resp->info.status);
         }
         break;
+
+        case ESP_ZB_CORE_CMD_REPORT_CONFIG_RESP_CB_ID:
+        ESP_LOGI(TAG, "Report config response received");
+        if (message) {
+            const esp_zb_zcl_cmd_write_attr_resp_message_t *resp = 
+                (esp_zb_zcl_cmd_write_attr_resp_message_t *)message;
+            if (resp->info.status == ESP_ZB_ZCL_STATUS_SUCCESS) {
+                ESP_LOGI(TAG, "Report configuration accepted by sensor");
+            } else {
+                ESP_LOGE(TAG, "Report configuration rejected with status: 0x%02x", resp->info.status);
+            }
+        }
+        break;
+
+        case ESP_ZB_ZDO_SIGNAL_LEAVE_INDICATION:
+        ESP_LOGI(TAG, "Device leave indication received");
+        break;
+
+        case ESP_ZB_CORE_CMD_IAS_ZONE_ZONE_STATUS_CHANGE_NOT_ID:
+        ESP_LOGI(TAG, "IAS Zone status change notification received");
+        if (message) {
+            const esp_zb_zcl_ias_zone_status_change_notification_message_t *status = 
+                (esp_zb_zcl_ias_zone_status_change_notification_message_t *)message;
+            ESP_LOGI(TAG, "Zone status: 0x%04x", status->zone_status);
+            g_is_window_open = (status->zone_status & 0x0001);
+            
+            // Trigger UI update
+            ui_event_t event = {
+                .target_screen = SCREEN_MAIN,
+                .message = ""
+            };
+            xQueueSend(ui_event_queue, &event, 0);
+        }
+        break;
+            break;
+
+        case ESP_ZB_ZDO_SIGNAL_DEVICE_ANNCE:
+            ESP_LOGI(TAG, "Device announce signal received");
+            break;
             
         default:
             ESP_LOGW(TAG, "Unhandled Zigbee action(0x%x) callback", callback_id);
@@ -224,6 +288,12 @@ static esp_zb_cluster_list_t *custom_thermostat_clusters_create(esp_zb_thermosta
     ESP_ERROR_CHECK(esp_zb_cluster_list_add_thermostat_cluster(cluster_list, esp_zb_thermostat_cluster_create(&(thermostat->thermostat_cfg)), ESP_ZB_ZCL_CLUSTER_SERVER_ROLE));
     /* Add temperature measurement cluster for attribute reporting */
     ESP_ERROR_CHECK(esp_zb_cluster_list_add_temperature_meas_cluster(cluster_list, esp_zb_temperature_meas_cluster_create(NULL), ESP_ZB_ZCL_CLUSTER_CLIENT_ROLE));
+     
+    /* Add IAS Zone cluster as client */
+    ESP_ERROR_CHECK(esp_zb_cluster_list_add_ias_zone_cluster(cluster_list, 
+    esp_zb_zcl_attr_list_create(ESP_ZB_ZCL_CLUSTER_ID_IAS_ZONE), 
+    ESP_ZB_ZCL_CLUSTER_CLIENT_ROLE));
+
     return cluster_list;
 }
 //do not delete, needed to bind trv for two way communication
@@ -259,6 +329,7 @@ static void zigbee_task(void *pvParameters)
     esp_zb_set_primary_network_channel_set(ESP_ZB_PRIMARY_CHANNEL_MASK);
     
     esp_zb_core_action_handler_register(zb_action_handler);
+
     esp_zb_set_primary_network_channel_set(ESP_ZB_PRIMARY_CHANNEL_MASK);
     ESP_ERROR_CHECK(esp_zb_start(false));
     // Start Zigbee stack with autostart
