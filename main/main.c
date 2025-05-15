@@ -31,7 +31,7 @@
 
 // Global state tracking variables
 static int64_t g_last_presence_time = 0; // Last time presence was detected
-static bool g_is_window_open=false; // Global window state
+bool g_is_window_open=false; // Global window state
 static bool g_presence_detected = false; // Global presence state
 static bool g_trv_state = false;  // Track TRV state
 
@@ -111,9 +111,39 @@ static esp_err_t zb_action_handler(esp_zb_core_action_callback_id_t callback_id,
             ret = zb_attribute_handler((esp_zb_zcl_set_attr_value_message_t *)message);
             break;
             
-        case ESP_ZB_CORE_CMD_READ_ATTR_RESP_CB_ID:  // 0x1000
+            case ESP_ZB_CORE_CMD_READ_ATTR_RESP_CB_ID:  // 0x1000
             ESP_LOGI(TAG, "Read attribute response received");
-            // Handle attribute reading response
+            if (message) {
+                const esp_zb_zcl_cmd_read_attr_resp_message_t *resp = 
+                    (esp_zb_zcl_cmd_read_attr_resp_message_t *)message;
+                
+                if (resp->info.cluster == ESP_ZB_ZCL_CLUSTER_ID_IAS_ZONE) {
+                    if (resp->variables->attribute.id == ESP_ZB_ZCL_ATTR_IAS_ZONE_ZONESTATUS_ID) {
+                        // Cast to uint16_t pointer since IAS Zone status is 16-bit
+                        uint16_t zone_status = *(uint16_t *)resp->variables->attribute.data.value;
+                        ESP_LOGI(TAG, "IAS Zone Status: 0x%04x", zone_status);
+                        
+                        // Bit 0 indicates alarm1 (usually the open/closed state)
+                        g_is_window_open = (zone_status & 0x0001);
+                        ESP_LOGI(TAG, "Window is %s", g_is_window_open ? "OPEN" : "CLOSED");
+                        
+                        // Decode other status bits if needed
+                        bool alarm2 = (zone_status & 0x0002) != 0;
+                        bool tamper = (zone_status & 0x0004) != 0;
+                        bool battery = (zone_status & 0x0008) != 0;
+                        
+                        ESP_LOGI(TAG, "Additional status - Alarm2: %d, Tamper: %d, Battery Low: %d",
+                                 alarm2, tamper, battery);
+                        
+                        // Trigger UI update
+                        ui_event_t event = {
+                            .target_screen = SCREEN_MAIN,
+                            .message = ""
+                        };
+                        xQueueSend(ui_event_queue, &event, 0);
+                    }
+                }
+            }
             break;
             
         case ESP_ZB_CORE_REPORT_ATTR_CB_ID:
@@ -562,7 +592,7 @@ void app_main(void)
     xTaskCreate(lvgl_task, "lvgl_handler", 4096, NULL, 6, NULL);
     xTaskCreate(ui_update_task, "ui_update", 4096, NULL, 5, NULL);
     xTaskCreate(zigbee_task, "Zigbee_main", 4096, NULL, 5, NULL);
-    xTaskCreate(hmmd_read_task, "HMMD_read", 2048, NULL, 4, NULL);
-    xTaskCreate(dht_sensor_task, "DHT_sensor", 2048, NULL, 4, NULL);
+    // xTaskCreate(hmmd_read_task, "HMMD_read", 2048, NULL, 4, NULL);
+    // xTaskCreate(dht_sensor_task, "DHT_sensor", 2048, NULL, 4, NULL);
    
 }

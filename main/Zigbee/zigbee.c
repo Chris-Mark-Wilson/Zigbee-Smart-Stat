@@ -1,6 +1,7 @@
 #include "nvs.h"
 #include "nvs_flash.h"
 #include "Zigbee/zigbee.h"
+#include "zcl/esp_zigbee_zcl_command.h" // Ensure this header defines esp_zb_zcl_config_report_cmd_t and related types
 #include "esp_timer.h"
 #include "../LVGL_UI/ui_screens.h"
 #include "../LVGL_UI/ui_events.h"
@@ -398,8 +399,11 @@ static void find_trv(esp_zb_zdo_match_desc_req_param_t *param, esp_zb_zdo_match_
 }
 
 
-// Add after the bind success:
+
 void read_window_sensor_status(uint16_t addr, uint8_t endpoint) {
+    // Define the attribute ID we want to read
+    uint16_t attr_id = ESP_ZB_ZCL_ATTR_IAS_ZONE_ZONESTATUS_ID;
+    
     esp_zb_zcl_read_attr_cmd_t read_req = {
         .zcl_basic_cmd = {
             .dst_addr_u.addr_short = addr,
@@ -409,15 +413,21 @@ void read_window_sensor_status(uint16_t addr, uint8_t endpoint) {
         .address_mode = ESP_ZB_APS_ADDR_MODE_16_ENDP_PRESENT,
         .clusterID = ESP_ZB_ZCL_CLUSTER_ID_IAS_ZONE,
         .attr_number = 1,
-        .attr_field = &(esp_zb_zcl_attribute_t){
-            .id = ESP_ZB_ZCL_ATTR_IAS_ZONE_ZONESTATUS_ID,
-        }
+        .attr_field = &attr_id,
     };
     
     ESP_LOGI(TAG, "Reading window sensor status");
-    esp_zb_zcl_read_attr_cmd_req(&read_req);
+    // Change from pointer to direct value
+    uint8_t status = esp_zb_zcl_read_attr_cmd_req(&read_req);
+    
+    // No need to dereference or free since it's not a pointer anymore
+    if (status == ESP_OK) {
+        ESP_LOGI(TAG, "Window sensor read request sent successfully");
+        // The actual status will come through the attribute report callback
+    } else {
+        ESP_LOGE(TAG, "Failed to send window sensor read request: %d", status);
+    }
 }
-
 
 static void bind_window_sensor_cb(esp_zb_zdp_status_t zdo_status, void *user_ctx)
 {
@@ -431,40 +441,46 @@ static void bind_window_sensor_cb(esp_zb_zdp_status_t zdo_status, void *user_ctx
         ESP_LOGI(TAG, "Window sensor bound successfully");
         ESP_LOGI(TAG, "Coordinator address: 0x%04x", esp_zb_get_short_address());
         
-        // Create record for IAS Zone status reporting
-        esp_zb_zcl_config_report_record_t report_record = {
-            .direction = ESP_ZB_ZCL_REPORT_DIRECTION_SEND,    // Sensor should SEND reports
-            .attributeID = ESP_ZB_ZCL_ATTR_IAS_ZONE_ZONESTATUS_ID,
-            .attrType = ESP_ZB_ZCL_ATTR_TYPE_8BITMAP,
-            .min_interval = 0,     // Send immediately when state changes
-            .max_interval = 60,    // If no changes, report at least every 60 seconds
-            .reportable_change = NULL  // Not used for discrete data types
-        };
 
         // Configure reporting command
-        esp_zb_zcl_config_report_cmd_t report_cmd = {
-            .zcl_basic_cmd = {
-                .dst_addr_u.addr_short = bind_req->req_dst_addr,
-                .dst_endpoint = bind_req->src_endp,
-                .src_endpoint = bind_req->dst_endp,
-            },
-            .address_mode = ESP_ZB_APS_ADDR_MODE_16_ENDP_PRESENT,
-            .clusterID = ESP_ZB_ZCL_CLUSTER_ID_IAS_ZONE,
-            .direction = ESP_ZB_ZCL_CMD_DIRECTION_TO_SRV,
-            .dis_defalut_resp = 0,
-            .manuf_specific = 0,
-            .manuf_code = 0,
-            .record_number = 1,
-            .record_field = &report_record
-        };
-        ESP_LOGI(TAG, "Configuring IAS Zone reporting for window sensor");
-        uint8_t tsn = esp_zb_zcl_config_report_cmd_req(&report_cmd);
-        if (tsn == 0) {
-            ESP_LOGW(TAG, "Config report command returned 0 TSN - this may be normal");
-        } else {
-            last_config_tsn = tsn;
-            ESP_LOGI(TAG, "Config report command sent with TSN: %d", tsn);
-        }
+   // First, write the CIE address (identify this coordinator as the CIE)
+esp_zb_ieee_addr_t coordinator_addr;
+   
+    // Get the coordinator's long address
+esp_zb_get_long_address(coordinator_addr);
+
+esp_zb_zcl_write_attr_cmd_t cie_addr_cmd = {
+    .zcl_basic_cmd = {
+        .dst_addr_u.addr_short = bind_req->req_dst_addr,
+        .dst_endpoint = bind_req->src_endp,
+        .src_endpoint = bind_req->dst_endp,
+    },
+    .address_mode = ESP_ZB_APS_ADDR_MODE_16_ENDP_PRESENT,
+    .clusterID = ESP_ZB_ZCL_CLUSTER_ID_IAS_ZONE,
+    .attr_number = 1,
+    .attr_field = malloc(sizeof(esp_zb_zcl_attribute_t))
+};
+
+if (cie_addr_cmd.attr_field != NULL) {
+    cie_addr_cmd.attr_field->id = ESP_ZB_ZCL_ATTR_IAS_ZONE_IAS_CIE_ADDRESS_ID;
+    cie_addr_cmd.attr_field->data.type = ESP_ZB_ZCL_ATTR_TYPE_IEEE_ADDR;
+    cie_addr_cmd.attr_field->data.size = sizeof(esp_zb_ieee_addr_t);
+    cie_addr_cmd.attr_field->data.value = coordinator_addr;
+    
+    ESP_LOGI(TAG, "Writing CIE address to IAS Zone device");
+    esp_zb_zcl_write_attr_cmd_req(&cie_addr_cmd);
+    
+    free(cie_addr_cmd.attr_field);
+}
+
+        // ESP_LOGI(TAG, "Configuring IAS Zone reporting for window sensor");
+        // uint8_t tsn = esp_zb_zcl_config_report_cmd_req(&report_cmd);
+        // if (tsn == 0) {
+        //     ESP_LOGW(TAG, "Config report command returned 0 TSN - this may be normal");
+        // } else {
+        //     last_config_tsn = tsn;
+        //     ESP_LOGI(TAG, "Config report command sent with TSN: %d", tsn);
+        // }
 
         // Send read request to get initial status
         read_window_sensor_status(stored_devices[window_sensor_count - 1].short_addr,
@@ -503,14 +519,14 @@ static void find_window_sensor_cb(esp_zb_zdp_status_t zdo_status, uint16_t peer_
             bind_req->req_dst_addr = peer_addr;
             esp_zb_ieee_address_by_short(peer_addr, bind_req->src_address);
             bind_req->src_endp = peer_endpoint;
-            bind_req->cluster_id = ESP_ZB_ZCL_CLUSTER_ID_IAS_ZONE;
+            bind_req->cluster_id = ESP_ZB_ZCL_CLUSTER_ID_BINARY_INPUT;
             bind_req->dst_addr_mode = ESP_ZB_ZDO_BIND_DST_ADDR_MODE_64_BIT_EXTENDED;
             esp_zb_get_long_address(bind_req->dst_address_u.addr_long);
             bind_req->dst_endp = HA_THERMOSTAT_ENDPOINT;
 
             ESP_LOGI(TAG, "Binding Window Sensor to coordinator");
             ESP_LOGI(TAG, "Sending bind request - addr: 0x%04x, ep: %d, cluster: 0x%04x", 
-                peer_addr, peer_endpoint, ESP_ZB_ZCL_CLUSTER_ID_IAS_ZONE);
+                peer_addr, peer_endpoint, ESP_ZB_ZCL_CLUSTER_ID_BINARY_INPUT);
             esp_zb_zdo_device_bind_req(bind_req, bind_window_sensor_cb, bind_req);
 
             // Save device
@@ -543,8 +559,8 @@ static void find_window_sensor(esp_zb_zdo_match_desc_req_param_t *param, esp_zb_
 
     uint16_t cluster_list[] = {
         ESP_ZB_ZCL_CLUSTER_ID_IAS_ZONE,        // 0x0500
-        ESP_ZB_ZCL_CLUSTER_ID_BINARY_INPUT,    // 0x000F
-        ESP_ZB_ZCL_CLUSTER_ID_DOOR_LOCK        // 0x0101
+        // ESP_ZB_ZCL_CLUSTER_ID_BINARY_INPUT,    // 0x000F
+        // ESP_ZB_ZCL_CLUSTER_ID_DOOR_LOCK        // 0x0101
     };
     
     param->profile_id = ESP_ZB_AF_HA_PROFILE_ID;
@@ -615,6 +631,8 @@ void zigbee_signal_handler(esp_zb_app_signal_t *signal_struct)
                 };
                 xQueueSend(ui_event_queue, &event, 0);
                 ESP_LOGI(TAG, "Network formation successful");
+                uint8_t current_channel = esp_zb_get_current_channel();
+                ESP_LOGI("debug sniffer", "Zigbee operating on channel: %d", current_channel);
                 esp_zb_bdb_start_top_level_commissioning(ESP_ZB_BDB_MODE_NETWORK_STEERING);
             } else {
                 ui_event_t event = {
@@ -748,7 +766,10 @@ void zigbee_signal_handler(esp_zb_app_signal_t *signal_struct)
         case ESP_ZB_ZDO_SIGNAL_DEVICE_AUTHORIZED: {
             esp_zb_zdo_signal_device_authorized_params_t *auth_params = 
                 (esp_zb_zdo_signal_device_authorized_params_t*)esp_zb_app_signal_get_params(p_sg_p);
-            
+            ESP_LOGI(TAG, "Device authorized short address: 0x%04x", auth_params->short_addr);
+            ESP_LOGI(TAG, "Device authorised long address: %d", auth_params->long_addr);
+            ESP_LOGI(TAG, "Auth type: %d", auth_params->authorization_type);
+            ESP_LOGI(TAG, "Auth status: 0x%04x", auth_params->authorization_status);
             // Find the device in our stored list
             for (uint8_t i = 0; i < stored_device_count; i++) {
                 if (stored_devices[i].short_addr == auth_params->short_addr) {
@@ -773,11 +794,48 @@ void zigbee_signal_handler(esp_zb_app_signal_t *signal_struct)
 
         case ESP_ZB_ZDO_SIGNAL_DEVICE_UPDATE:  // 0x30
             ESP_LOGI(TAG, "Device update notification received");
+
+    esp_zb_zdo_signal_device_update_params_t *update_params = 
+    (esp_zb_zdo_signal_device_update_params_t*)esp_zb_app_signal_get_params(p_sg_p);
+        ESP_LOGI("debug sensor", "Device update notification received");
+        ESP_LOGI(TAG, "Device short address: 0x%04x", update_params->short_addr);
+        ESP_LOGI(TAG, "Device long address: %d", update_params->long_addr);
+        ESP_LOGI(TAG, "Device status: %d", update_params->status);
+        ESP_LOGI(TAG, "Device trust centre action: %d", update_params->tc_action);
+        ESP_LOGI(TAG, "Device parent short: %d", update_params->parent_short);
         break;
 
-        case ESP_ZB_NLME_STATUS_INDICATION:  // 0x32
-            ESP_LOGI(TAG, "Device Status Indication received");
-        break;
+      case ESP_ZB_NLME_STATUS_INDICATION:  // 0x32
+{
+    esp_zb_zdo_signal_nwk_status_indication_params_t *status_params = 
+        (esp_zb_zdo_signal_nwk_status_indication_params_t*)esp_zb_app_signal_get_params(p_sg_p);
+    
+    ESP_LOGI(TAG, "Device Status Indication received from: 0x%04x", status_params->network_addr);
+    ESP_LOGI(TAG, "Status code: 0x%02x", status_params->status);
+    ESP_LOGI(TAG, "Unknown command ID: 0x%02x", status_params->unknown_command_id);
+
+    if (status_params->status ==  ESP_ZB_NWK_COMMAND_STATUS_BAD_KEY_SEQUENCE_NUMBER ) {
+        ESP_LOGW(TAG, "Bad key sequence number 0x%02x", status_params->status); 
+     
+    }
+}
+break;
+case ESP_ZB_ZDO_DEVICE_UNAVAILABLE:  // 0x3c
+{
+    esp_zb_zdo_device_unavailable_params_t *unavailable_params = 
+        (esp_zb_zdo_device_unavailable_params_t*)esp_zb_app_signal_get_params(p_sg_p);
+    
+    ESP_LOGW(TAG, "Device unavailable: Short address: 0x%04x", unavailable_params->short_addr);
+    
+    // Try to identify which device became unavailable
+    for (uint8_t i = 0; i < stored_device_count; i++) {
+        if (stored_devices[i].short_addr == unavailable_params->short_addr) {
+            ESP_LOGW(TAG, "Lost connection to device: %s", stored_devices[i].name);
+            break;
+        }
+    }
+}
+break;
   
         case ESP_ZB_BDB_SIGNAL_DEVICE_REBOOT://0x06
             ESP_LOGI(TAG, "Device reboot signal received");

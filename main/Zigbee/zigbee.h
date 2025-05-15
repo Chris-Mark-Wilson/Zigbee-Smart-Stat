@@ -63,6 +63,9 @@ typedef struct {
     int64_t last_seen;  // Timestamp for device tracking
 } zigbee_device_t;
 
+// Global state tracking variables
+extern bool g_is_window_open; // Global window state
+
 // Declare external array
 extern zigbee_device_t stored_devices[MAX_TRV_DEVICES + MAX_WINDOW_SENSORS];
 extern uint8_t stored_device_count;
