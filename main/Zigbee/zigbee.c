@@ -417,18 +417,15 @@ void read_window_sensor_status(uint16_t addr, uint8_t endpoint) {
     };
     
     ESP_LOGI(TAG, "Reading window sensor status");
-    // Change from pointer to direct value
-    uint8_t status = esp_zb_zcl_read_attr_cmd_req(&read_req);
+ 
+    int tsn = esp_zb_zcl_read_attr_cmd_req(&read_req);
     
-    // No need to dereference or free since it's not a pointer anymore
-    if (status == ESP_OK) {
-        ESP_LOGI(TAG, "Window sensor read request sent successfully");
-        // The actual status will come through the attribute report callback
+    if (tsn == 0) {
+        ESP_LOGW(TAG, "Read attribute command returned 0 TSN - this may be normal");
     } else {
-        ESP_LOGE(TAG, "Failed to send window sensor read request: %d", status);
+        ESP_LOGI(TAG, "Read attribute command returned TSN: %d", tsn);
     }
 }
-
 static void bind_window_sensor_cb(esp_zb_zdp_status_t zdo_status, void *user_ctx)
 {
     esp_zb_zdo_bind_req_param_t *bind_req = (esp_zb_zdo_bind_req_param_t *)user_ctx;
@@ -439,15 +436,16 @@ static void bind_window_sensor_cb(esp_zb_zdp_status_t zdo_status, void *user_ctx
 
     if (zdo_status == ESP_ZB_ZDP_STATUS_SUCCESS) {
         ESP_LOGI(TAG, "Window sensor bound successfully");
-        ESP_LOGI(TAG, "Coordinator address: 0x%04x", esp_zb_get_short_address());
         
-
+        
         // Configure reporting command
-   // First, write the CIE address (identify this coordinator as the CIE)
-esp_zb_ieee_addr_t coordinator_addr;
-   
-    // Get the coordinator's long address
-esp_zb_get_long_address(coordinator_addr);
+        // First, write the CIE address (identify this coordinator as the CIE)
+        esp_zb_ieee_addr_t coordinator_addr;
+        
+        // Get the coordinator's long address
+        esp_zb_get_long_address(coordinator_addr);
+        ESP_LOGI(TAG, "Coordinator address: 0x%04x",coordinator_addr);
+        // Write the CIE address to the IAS Zone device
 
 esp_zb_zcl_write_attr_cmd_t cie_addr_cmd = {
     .zcl_basic_cmd = {
@@ -472,17 +470,37 @@ if (cie_addr_cmd.attr_field != NULL) {
     
     free(cie_addr_cmd.attr_field);
 }
+esp_zb_zcl_config_report_record_t report_record = {
+    .attributeID = ESP_ZB_ZCL_ATTR_IAS_ZONE_ZONESTATUS_ID,
+    .attrType = ESP_ZB_ZCL_ATTR_TYPE_16BITMAP,
+    .min_interval = 0,    
+    .max_interval = 300,  
+    .reportable_change = 0,
+    .direction =ESP_ZB_ZCL_REPORT_DIRECTION_SEND
+};
 
-        // ESP_LOGI(TAG, "Configuring IAS Zone reporting for window sensor");
-        // uint8_t tsn = esp_zb_zcl_config_report_cmd_req(&report_cmd);
-        // if (tsn == 0) {
-        //     ESP_LOGW(TAG, "Config report command returned 0 TSN - this may be normal");
-        // } else {
-        //     last_config_tsn = tsn;
-        //     ESP_LOGI(TAG, "Config report command sent with TSN: %d", tsn);
-        // }
+esp_zb_zcl_config_report_cmd_t report_cmd = {
+    .zcl_basic_cmd = {
+        .dst_addr_u.addr_short = bind_req->req_dst_addr,
+        .dst_endpoint = bind_req->src_endp,
+        .src_endpoint = bind_req->dst_endp,
+    },
+    .address_mode = ESP_ZB_APS_ADDR_MODE_16_ENDP_PRESENT,
+    .clusterID = ESP_ZB_ZCL_CLUSTER_ID_IAS_ZONE,
+    .direction = ESP_ZB_ZCL_CMD_DIRECTION_TO_SRV,
+    .dis_defalut_resp = 0,
+    .record_number = 1,
+    .record_field = &report_record
+};
 
-        // Send read request to get initial status
+ESP_LOGI(TAG, "Configuring IAS Zone reporting for window sensor");
+uint8_t tsn = esp_zb_zcl_config_report_cmd_req(&report_cmd);
+if (tsn == 0) {
+    ESP_LOGW(TAG, "Config report command returned 0 TSN - this may be normal");
+} else {
+    last_config_tsn = tsn;
+    ESP_LOGI(TAG, "Config report command sent with TSN: %d", tsn);
+}
         read_window_sensor_status(stored_devices[window_sensor_count - 1].short_addr,
             stored_devices[window_sensor_count - 1].endpoint);
     } else {
@@ -519,14 +537,14 @@ static void find_window_sensor_cb(esp_zb_zdp_status_t zdo_status, uint16_t peer_
             bind_req->req_dst_addr = peer_addr;
             esp_zb_ieee_address_by_short(peer_addr, bind_req->src_address);
             bind_req->src_endp = peer_endpoint;
-            bind_req->cluster_id = ESP_ZB_ZCL_CLUSTER_ID_BINARY_INPUT;
+            bind_req->cluster_id = ESP_ZB_ZCL_CLUSTER_ID_IAS_ZONE;
             bind_req->dst_addr_mode = ESP_ZB_ZDO_BIND_DST_ADDR_MODE_64_BIT_EXTENDED;
             esp_zb_get_long_address(bind_req->dst_address_u.addr_long);
             bind_req->dst_endp = HA_THERMOSTAT_ENDPOINT;
 
             ESP_LOGI(TAG, "Binding Window Sensor to coordinator");
-            ESP_LOGI(TAG, "Sending bind request - addr: 0x%04x, ep: %d, cluster: 0x%04x", 
-                peer_addr, peer_endpoint, ESP_ZB_ZCL_CLUSTER_ID_BINARY_INPUT);
+            ESP_LOGI(TAG, "Sending bind request (IAS Zone) - addr: 0x%04x, ep: %d, cluster: 0x%04x", 
+                peer_addr, peer_endpoint, ESP_ZB_ZCL_CLUSTER_ID_IAS_ZONE);
             esp_zb_zdo_device_bind_req(bind_req, bind_window_sensor_cb, bind_req);
 
             // Save device
@@ -564,7 +582,7 @@ static void find_window_sensor(esp_zb_zdo_match_desc_req_param_t *param, esp_zb_
     };
     
     param->profile_id = ESP_ZB_AF_HA_PROFILE_ID;
-    param->num_in_clusters = ARRAY_LENGTH(cluster_list);
+    param->num_in_clusters = 1;
     param->num_out_clusters = 0;
     param->cluster_list = cluster_list;
 

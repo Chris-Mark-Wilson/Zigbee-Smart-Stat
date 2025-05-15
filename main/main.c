@@ -205,6 +205,10 @@ static esp_err_t zb_action_handler(esp_zb_core_action_callback_id_t callback_id,
             } else {
                 ESP_LOGE(TAG, "Report configuration rejected with status: 0x%02x", resp->info.status);
             }
+            ESP_LOGI(TAG, "Report config response details:");
+            ESP_LOGI(TAG, "  Status: 0x%02x", resp->info.status);
+            ESP_LOGI(TAG, "  Cluster: 0x%04x", resp->info.cluster);
+         
         }
         break;
 
@@ -426,9 +430,16 @@ static void button_pressed_cb(button_event_t event)
     
 
     switch (event) {
-        case BUTTON_PRESSED:
+        case BUTTON_PRESSED:{
             ESP_LOGI(TAG, "Button pressed - waiting for release");
+            //address of the window sensor and endpoint
+            
+            uint16_t addr = stored_devices[0].short_addr; // Replace with actual address
+            uint8_t endpoint = stored_devices[0].endpoint; // Replace with actual endpoint
+            read_window_sensor_status(addr, endpoint);
+            
             break;
+        }
 
         case BUTTON_RELEASED: {
             if (current_screen == SCREEN_BOOT && network_open) {
@@ -438,57 +449,35 @@ static void button_pressed_cb(button_event_t event)
             } 
             else if (current_screen == SCREEN_MAIN) {
                 if (stored_device_count > 0) {
-                    // Toggle between min and max temperature and corresponding mode
-                    g_trv_state = !g_trv_state;
-                    g_target_temp = g_trv_state ? g_max_temp : g_min_temp;
+                    // // Toggle between min and max temperature and corresponding mode
+                    // g_trv_state = !g_trv_state;
+                    // g_target_temp = g_trv_state ? g_max_temp : g_min_temp;
                     
-                    // First write the system mode (OFF/HEAT)
-                    esp_zb_zcl_write_attr_cmd_t mode_cmd = {
-                        .zcl_basic_cmd = {
-                            .dst_addr_u.addr_short = stored_devices[0].short_addr,
-                            .dst_endpoint = stored_devices[0].endpoint,
-                            .src_endpoint = HA_THERMOSTAT_ENDPOINT,
-                        },
-                        .address_mode = ESP_ZB_APS_ADDR_MODE_16_ENDP_PRESENT,
-                        .clusterID = ESP_ZB_ZCL_CLUSTER_ID_THERMOSTAT,
-                        .direction = ESP_ZB_ZCL_CMD_DIRECTION_TO_SRV,
-                        .attr_number = 1,
-                        .attr_field = &(esp_zb_zcl_attribute_t){
-                            .id = ESP_ZB_ZCL_ATTR_THERMOSTAT_SYSTEM_MODE_ID,
-                            .data.type = ESP_ZB_ZCL_ATTR_TYPE_8BIT_ENUM,  // Use 8-bit enum type
-                            .data.size = sizeof(uint8_t),
-                            .data.value = (uint8_t*)(g_trv_state ? 
-                                &(uint8_t){ESP_ZB_ZCL_THERMOSTAT_SYSTEM_MODE_HEAT} : 
-                                &(uint8_t){ESP_ZB_ZCL_THERMOSTAT_SYSTEM_MODE_OFF})
-                        }
-                    };
+                    // // First write the system mode (OFF/HEAT)
+                    // esp_zb_zcl_write_attr_cmd_t mode_cmd = {
+                    //     .zcl_basic_cmd = {
+                    //         .dst_addr_u.addr_short = stored_devices[0].short_addr,
+                    //         .dst_endpoint = stored_devices[0].endpoint,
+                    //         .src_endpoint = HA_THERMOSTAT_ENDPOINT,
+                    //     },
+                    //     .address_mode = ESP_ZB_APS_ADDR_MODE_16_ENDP_PRESENT,
+                    //     .clusterID = ESP_ZB_ZCL_CLUSTER_ID_THERMOSTAT,
+                    //     .direction = ESP_ZB_ZCL_CMD_DIRECTION_TO_SRV,
+                    //     .attr_number = 1,
+                    //     .attr_field = &(esp_zb_zcl_attribute_t){
+                    //         .id = ESP_ZB_ZCL_ATTR_THERMOSTAT_SYSTEM_MODE_ID,
+                    //         .data.type = ESP_ZB_ZCL_ATTR_TYPE_8BIT_ENUM,  // Use 8-bit enum type
+                    //         .data.size = sizeof(uint8_t),
+                    //         .data.value = (uint8_t*)(g_trv_state ? 
+                    //             &(uint8_t){ESP_ZB_ZCL_THERMOSTAT_SYSTEM_MODE_HEAT} : 
+                    //             &(uint8_t){ESP_ZB_ZCL_THERMOSTAT_SYSTEM_MODE_OFF})
+                    //     }
+                    // };
                     
-                    ESP_LOGI(TAG, "Setting TRV mode to %s", g_trv_state ? "HEAT" : "OFF");
-                    esp_zb_zcl_write_attr_cmd_req(&mode_cmd);
-            
-                    // Only send temperature if we're turning heat on
-                    if (g_trv_state) {
-                        esp_zb_zcl_write_attr_cmd_t temp_cmd = {
-                            .zcl_basic_cmd = {
-                                .dst_addr_u.addr_short = stored_devices[0].short_addr,
-                                .dst_endpoint = stored_devices[0].endpoint,
-                                .src_endpoint = HA_THERMOSTAT_ENDPOINT,
-                            },
-                            .address_mode = ESP_ZB_APS_ADDR_MODE_16_ENDP_PRESENT,
-                            .clusterID = ESP_ZB_ZCL_CLUSTER_ID_THERMOSTAT,
-                            .direction = ESP_ZB_ZCL_CMD_DIRECTION_TO_SRV,
-                            .attr_number = 1,
-                            .attr_field = &(esp_zb_zcl_attribute_t){
-                                .id = ESP_ZB_ZCL_ATTR_THERMOSTAT_OCCUPIED_HEATING_SETPOINT_ID,
-                                .data.type = ESP_ZB_ZCL_ATTR_TYPE_S16,
-                                .data.size = sizeof(int16_t),
-                                .data.value = (uint8_t*)&g_target_temp
-                            }
-                        };
-                        
-                        ESP_LOGI(TAG, "Setting TRV target temperature to %.1f°C", g_target_temp / 100.0f);
-                        esp_zb_zcl_write_attr_cmd_req(&temp_cmd);
-                    }
+                  
+                    uint16_t addr = stored_devices[0].short_addr; // Replace with actual address
+                    uint8_t endpoint = stored_devices[0].endpoint; // Replace with actual endpoint
+                    read_window_sensor_status(addr, endpoint);
                 } else {
                     ESP_LOGW(TAG, "No devices stored - cannot send commands");
                 }

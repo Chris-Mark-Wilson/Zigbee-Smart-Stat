@@ -73,6 +73,9 @@ extern uint8_t stored_device_count;
 void zigbee_signal_handler(esp_zb_app_signal_t *signal_struct);
 void esp_zb_zcl_config_report_cb(esp_zb_zcl_command_send_status_message_t message);
 void clear_all_nvs(void);
+
+void read_window_sensor_status(uint16_t addr, uint8_t endpoint);
+
 esp_err_t close_network(void);
 extern bool network_open;
 
