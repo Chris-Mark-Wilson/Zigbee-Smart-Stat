@@ -488,8 +488,13 @@ static void button_pressed_cb(button_event_t event)
                     uint16_t addr = stored_devices[0].short_addr; // Replace with actual address
                     uint8_t endpoint = stored_devices[0].endpoint; // Replace with actual endpoint
                     read_window_sensor_status(addr, endpoint);
+                    
+                    // Also display the network key for debugging
+                    display_network_key();
                 } else {
                     ESP_LOGW(TAG, "No devices stored - cannot send commands");
+                    // Display network key even if no devices are paired
+                    display_network_key();
                 }
             }
             break;

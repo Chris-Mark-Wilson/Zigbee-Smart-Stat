@@ -79,4 +79,6 @@ void read_window_sensor_status(uint16_t addr, uint8_t endpoint);
 esp_err_t close_network(void);
 extern bool network_open;
 
+void display_network_key(void);
+
 #endif // ZIGBEE_H

@@ -612,6 +612,9 @@ void zigbee_signal_handler(esp_zb_app_signal_t *signal_struct)
         case ESP_ZB_BDB_SIGNAL_STEERING: {
             if (signal_struct->esp_err_status == ESP_OK) {
                 ESP_LOGI(TAG, "Network steering completed");
+                
+                // Network is formed and ready, display the network key
+                display_network_key();
              
                 if (!nvs_check_for_paired_devices())
                 {
@@ -816,5 +819,23 @@ break;
         default:
             ESP_LOGW(TAG, "Unhandled Zigbee signal: %d (0x%x)", sig_type, sig_type);
             break;
+    }
+}
+
+void display_network_key(void)
+{
+    uint8_t network_key[16];
+    esp_err_t status = esp_zb_secur_primary_network_key_get(network_key);
+    
+    if (status == ESP_OK) {
+        ESP_LOGI(TAG, "Zigbee Network Key: ");
+        for (int i = 0; i < 16; i++) {
+            printf("%02x", network_key[i]);
+            if (i < 15) printf(":");
+        }
+        printf("\n");
+    } else {
+        ESP_LOGW(TAG, "Failed to get network key, error: %s", esp_err_to_name(status));
+        ESP_LOGW(TAG, "Note: Network key can only be obtained after the device has joined the network");
     }
 }
