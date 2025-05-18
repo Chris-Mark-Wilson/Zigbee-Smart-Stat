@@ -106,10 +106,10 @@ static esp_err_t zb_action_handler(esp_zb_core_action_callback_id_t callback_id,
 
 
     switch (callback_id) {
-        case ESP_ZB_CORE_SET_ATTR_VALUE_CB_ID:
-        ESP_LOGI(TAG, "SET_ATTR_VALUE callback received");
-            ret = zb_attribute_handler((esp_zb_zcl_set_attr_value_message_t *)message);
-            break;
+            case ESP_ZB_CORE_SET_ATTR_VALUE_CB_ID:
+            ESP_LOGI(TAG, "SET_ATTR_VALUE callback received");
+                ret = zb_attribute_handler((esp_zb_zcl_set_attr_value_message_t *)message);
+                break;
             
             case ESP_ZB_CORE_CMD_READ_ATTR_RESP_CB_ID:  // 0x1000
             ESP_LOGI(TAG, "Read attribute response received");
@@ -183,6 +183,16 @@ static esp_err_t zb_action_handler(esp_zb_core_action_callback_id_t callback_id,
             ESP_LOGI(TAG, "Default response details:");
             ESP_LOGI(TAG, "  Status: 0x%02x", resp->status_code);
             ESP_LOGI(TAG, "  Cluster: 0x%04x", resp->info.cluster);
+            ESP_LOGI(TAG, "  Command ID: 0x%02x", resp->info.command.id); // Add this
+            
+            if (resp->info.cluster == ESP_ZB_ZCL_CLUSTER_ID_IAS_ZONE) {
+                ESP_LOGI("IAS ZONE: ", "IAS Zone command response:");
+                if (resp->status_code == ESP_ZB_ZCL_STATUS_SUCCESS) {
+                    ESP_LOGI(TAG, "Command accepted by sensor");
+                } else {
+                    ESP_LOGW(TAG, "Command rejected with status: 0x%02x", resp->status_code);
+                }
+            }
         }
         break;
                         
@@ -196,7 +206,7 @@ static esp_err_t zb_action_handler(esp_zb_core_action_callback_id_t callback_id,
         break;
 
         case ESP_ZB_CORE_CMD_REPORT_CONFIG_RESP_CB_ID:
-        ESP_LOGI(TAG, "Report config response received");
+        ESP_LOGI("IAS CONFIG", "Report config response received");
         if (message) {
             const esp_zb_zcl_cmd_write_attr_resp_message_t *resp = 
                 (esp_zb_zcl_cmd_write_attr_resp_message_t *)message;
@@ -216,12 +226,12 @@ static esp_err_t zb_action_handler(esp_zb_core_action_callback_id_t callback_id,
         ESP_LOGI(TAG, "Device leave indication received");
         break;
 
-        case ESP_ZB_CORE_CMD_IAS_ZONE_ZONE_STATUS_CHANGE_NOT_ID:
-        ESP_LOGI(TAG, "IAS Zone status change notification received");
+        case ESP_ZB_CORE_CMD_IAS_ZONE_ZONE_STATUS_CHANGE_NOT_ID: //0x0038
+        ESP_LOGI("IAS Zone Action Handler", "IAS Zone status change notification received");
         if (message) {
             const esp_zb_zcl_ias_zone_status_change_notification_message_t *status = 
                 (esp_zb_zcl_ias_zone_status_change_notification_message_t *)message;
-            ESP_LOGI(TAG, "Zone status: 0x%04x", status->zone_status);
+            ESP_LOGI("IAS Zone Action Handler", "Zone status: 0x%04x", status->zone_status);
             g_is_window_open = (status->zone_status & 0x0001);
             
             // Trigger UI update
@@ -367,7 +377,7 @@ static void zigbee_task(void *pvParameters)
     
     esp_zb_core_action_handler_register(zb_action_handler);
 
-    esp_zb_set_primary_network_channel_set(ESP_ZB_PRIMARY_CHANNEL_MASK);
+
     // Start Zigbee stack with autostart
     ESP_ERROR_CHECK(esp_zb_start(false));
   

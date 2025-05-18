@@ -298,7 +298,7 @@ static void bind_trv_cb(esp_zb_zdp_status_t zdo_status, void *user_ctx)
             esp_zb_zcl_read_attr_cmd_req(&read_req);
         }
         if (bind_req->req_dst_addr == trv.short_addr) {
-            ESP_LOGI(TAG, "Controller bound to trv on sensor endpoint(%d)",
+            ESP_LOGI(TAG, "Controller bound to trv from sensor address(0x%x) on sensor endpoint(%d)",
                      trv.short_addr, trv.endpoint);
         }
         free(bind_req);
@@ -444,63 +444,10 @@ static void bind_window_sensor_cb(esp_zb_zdp_status_t zdo_status, void *user_ctx
         
         // Get the coordinator's long address
         esp_zb_get_long_address(coordinator_addr);
-        ESP_LOGI(TAG, "Coordinator address: 0x%04x",coordinator_addr);
-        // Write the CIE address to the IAS Zone device
+        ESP_LOGI(TAG, "Coordinator address: 0x%02x%02x%02x%02x%02x%02x%02x%02x",
+                 coordinator_addr[7], coordinator_addr[6], coordinator_addr[5], coordinator_addr[4],
+                 coordinator_addr[3], coordinator_addr[2], coordinator_addr[1], coordinator_addr[0]);
 
-esp_zb_zcl_write_attr_cmd_t cie_addr_cmd = {
-    .zcl_basic_cmd = {
-        .dst_addr_u.addr_short = bind_req->req_dst_addr,
-        .dst_endpoint = bind_req->src_endp,
-        .src_endpoint = bind_req->dst_endp,
-    },
-    .address_mode = ESP_ZB_APS_ADDR_MODE_16_ENDP_PRESENT,
-    .clusterID = ESP_ZB_ZCL_CLUSTER_ID_IAS_ZONE,
-    .attr_number = 1,
-    .attr_field = malloc(sizeof(esp_zb_zcl_attribute_t))
-};
-
-if (cie_addr_cmd.attr_field != NULL) {
-    cie_addr_cmd.attr_field->id = ESP_ZB_ZCL_ATTR_IAS_ZONE_IAS_CIE_ADDRESS_ID;
-    cie_addr_cmd.attr_field->data.type = ESP_ZB_ZCL_ATTR_TYPE_IEEE_ADDR;
-    cie_addr_cmd.attr_field->data.size = sizeof(esp_zb_ieee_addr_t);
-    cie_addr_cmd.attr_field->data.value = coordinator_addr;
-    
-    ESP_LOGI(TAG, "Writing CIE address to IAS Zone device");
-    esp_zb_zcl_write_attr_cmd_req(&cie_addr_cmd);
-    
-    free(cie_addr_cmd.attr_field);
-}
-esp_zb_zcl_config_report_record_t report_record = {
-    .attributeID = ESP_ZB_ZCL_ATTR_IAS_ZONE_ZONESTATUS_ID,
-    .attrType = ESP_ZB_ZCL_ATTR_TYPE_16BITMAP,
-    .min_interval = 0,    
-    .max_interval = 300,  
-    .reportable_change = 0,
-    .direction =ESP_ZB_ZCL_REPORT_DIRECTION_SEND
-};
-
-esp_zb_zcl_config_report_cmd_t report_cmd = {
-    .zcl_basic_cmd = {
-        .dst_addr_u.addr_short = bind_req->req_dst_addr,
-        .dst_endpoint = bind_req->src_endp,
-        .src_endpoint = bind_req->dst_endp,
-    },
-    .address_mode = ESP_ZB_APS_ADDR_MODE_16_ENDP_PRESENT,
-    .clusterID = ESP_ZB_ZCL_CLUSTER_ID_IAS_ZONE,
-    .direction = ESP_ZB_ZCL_CMD_DIRECTION_TO_SRV,
-    .dis_defalut_resp = 0,
-    .record_number = 1,
-    .record_field = &report_record
-};
-
-ESP_LOGI(TAG, "Configuring IAS Zone reporting for window sensor");
-uint8_t tsn = esp_zb_zcl_config_report_cmd_req(&report_cmd);
-if (tsn == 0) {
-    ESP_LOGW(TAG, "Config report command returned 0 TSN - this may be normal");
-} else {
-    last_config_tsn = tsn;
-    ESP_LOGI(TAG, "Config report command sent with TSN: %d", tsn);
-}
         read_window_sensor_status(stored_devices[window_sensor_count - 1].short_addr,
             stored_devices[window_sensor_count - 1].endpoint);
     } else {
@@ -785,7 +732,10 @@ void zigbee_signal_handler(esp_zb_app_signal_t *signal_struct)
             esp_zb_zdo_signal_device_authorized_params_t *auth_params = 
                 (esp_zb_zdo_signal_device_authorized_params_t*)esp_zb_app_signal_get_params(p_sg_p);
             ESP_LOGI(TAG, "Device authorized short address: 0x%04x", auth_params->short_addr);
-            ESP_LOGI(TAG, "Device authorised long address: %d", auth_params->long_addr);
+            ESP_LOGI(TAG, "Device authorised long address: 0x%02x%02x%02x%02x%02x%02x%02x%02x",
+                     auth_params->long_addr[7], auth_params->long_addr[6], auth_params->long_addr[5],
+                     auth_params->long_addr[4], auth_params->long_addr[3], auth_params->long_addr[2],
+                     auth_params->long_addr[1], auth_params->long_addr[0]);
             ESP_LOGI(TAG, "Auth type: %d", auth_params->authorization_type);
             ESP_LOGI(TAG, "Auth status: 0x%04x", auth_params->authorization_status);
             // Find the device in our stored list
@@ -817,7 +767,10 @@ void zigbee_signal_handler(esp_zb_app_signal_t *signal_struct)
     (esp_zb_zdo_signal_device_update_params_t*)esp_zb_app_signal_get_params(p_sg_p);
         ESP_LOGI("debug sensor", "Device update notification received");
         ESP_LOGI(TAG, "Device short address: 0x%04x", update_params->short_addr);
-        ESP_LOGI(TAG, "Device long address: %d", update_params->long_addr);
+        ESP_LOGI(TAG, "Device long address: 0x%02x%02x%02x%02x%02x%02x%02x%02x",
+                 update_params->long_addr[7], update_params->long_addr[6], update_params->long_addr[5],
+                 update_params->long_addr[4], update_params->long_addr[3], update_params->long_addr[2],
+                 update_params->long_addr[1], update_params->long_addr[0]);
         ESP_LOGI(TAG, "Device status: %d", update_params->status);
         ESP_LOGI(TAG, "Device trust centre action: %d", update_params->tc_action);
         ESP_LOGI(TAG, "Device parent short: %d", update_params->parent_short);

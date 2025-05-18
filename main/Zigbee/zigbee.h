@@ -19,7 +19,7 @@
 /* Attribute values in ZCL string format
  * The string should be started with the length of its own.
  */
-#define MANUFACTURER_NAME               "\x09""ESPRESSIF"
+#define MANUFACTURER_NAME               "\x09""TUYA" //trying toi see if this helps wqith tuya stuff
 #define MODEL_IDENTIFIER                "\x07"CONFIG_IDF_TARGET
 
 #define ESP_ZB_ZC_CONFIG()                                                              \
