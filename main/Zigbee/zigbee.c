@@ -1,7 +1,8 @@
 #include "nvs.h"
 #include "nvs_flash.h"
 #include "Zigbee/zigbee.h"
-#include "zcl/esp_zigbee_zcl_command.h" // Ensure this header defines esp_zb_zcl_config_report_cmd_t and related types
+#include "zcl/esp_zigbee_zcl_command.h"
+#include "zcl/esp_zigbee_zcl_ias_zone.h" // Added for IAS Zone specific definitions
 #include "esp_timer.h"
 #include "../LVGL_UI/ui_screens.h"
 #include "../LVGL_UI/ui_events.h"
@@ -161,7 +162,7 @@ esp_err_t save_devices_to_nvs(void)
     return err;
 }
 
-void clear_all_nvs(void)
+esp_err_t clear_all_nvs(void)
 {
     // Clear default NVS partition
     nvs_flash_erase();
@@ -183,6 +184,7 @@ void clear_all_nvs(void)
     trv_count = 0;
     window_sensor_count = 0;
     stored_device_count = 0;
+    return ESP_OK;
 }
 
 bool nvs_check_for_paired_devices(void)
@@ -448,6 +450,30 @@ static void bind_window_sensor_cb(esp_zb_zdp_status_t zdo_status, void *user_ctx
                  coordinator_addr[7], coordinator_addr[6], coordinator_addr[5], coordinator_addr[4],
                  coordinator_addr[3], coordinator_addr[2], coordinator_addr[1], coordinator_addr[0]);
 
+esp_zb_zcl_write_attr_cmd_t write_cmd = {
+    .zcl_basic_cmd = {
+        .dst_addr_u.addr_short = bind_req->req_dst_addr,
+        .dst_endpoint = bind_req->dst_endp,
+        .src_endpoint = bind_req->src_endp,
+    },
+    .address_mode = ESP_ZB_APS_ADDR_MODE_16_ENDP_PRESENT,
+    .clusterID = ESP_ZB_ZCL_CLUSTER_ID_IAS_ZONE,
+    .direction = ESP_ZB_ZCL_CMD_DIRECTION_TO_SRV,
+    .attr_number = 1,
+    .attr_field = &(esp_zb_zcl_attribute_t){
+        .id = ESP_ZB_ZCL_ATTR_IAS_ZONE_IAS_CIE_ADDRESS_ID,
+        .data.type = ESP_ZB_ZCL_ATTR_TYPE_IEEE_ADDR,
+        .data.size = sizeof(esp_zb_ieee_addr_t),
+        .data.value = coordinator_addr
+    }
+};
+
+ESP_ERROR_CHECK(esp_zb_zcl_write_attr_cmd_req(&write_cmd));
+
+// Send Zone Enroll Response
+//or not.. maybe wait for it
+
+
         read_window_sensor_status(stored_devices[window_sensor_count - 1].short_addr,
             stored_devices[window_sensor_count - 1].endpoint);
     } else {
@@ -487,7 +513,7 @@ static void find_window_sensor_cb(esp_zb_zdp_status_t zdo_status, uint16_t peer_
             bind_req->cluster_id = ESP_ZB_ZCL_CLUSTER_ID_IAS_ZONE;
             bind_req->dst_addr_mode = ESP_ZB_ZDO_BIND_DST_ADDR_MODE_64_BIT_EXTENDED;
             esp_zb_get_long_address(bind_req->dst_address_u.addr_long);
-            bind_req->dst_endp = HA_THERMOSTAT_ENDPOINT;
+            bind_req->dst_endp = IAS_ZONE_ENDPOINT;
 
             ESP_LOGI(TAG, "Binding Window Sensor to coordinator");
             ESP_LOGI(TAG, "Sending bind request (IAS Zone) - addr: 0x%04x, ep: %d, cluster: 0x%04x", 
@@ -778,22 +804,26 @@ void zigbee_signal_handler(esp_zb_app_signal_t *signal_struct)
         ESP_LOGI(TAG, "Device trust centre action: %d", update_params->tc_action);
         ESP_LOGI(TAG, "Device parent short: %d", update_params->parent_short);
         break;
-
-      case ESP_ZB_NLME_STATUS_INDICATION:  // 0x32
+case ESP_ZB_NLME_STATUS_INDICATION:  // 0x32 
 {
     esp_zb_zdo_signal_nwk_status_indication_params_t *status_params = 
         (esp_zb_zdo_signal_nwk_status_indication_params_t*)esp_zb_app_signal_get_params(p_sg_p);
     
     ESP_LOGI(TAG, "Device Status Indication received from: 0x%04x", status_params->network_addr);
     ESP_LOGI(TAG, "Status code: 0x%02x", status_params->status);
-    ESP_LOGI(TAG, "Unknown command ID: 0x%02x", status_params->unknown_command_id);
-
-    if (status_params->status ==  ESP_ZB_NWK_COMMAND_STATUS_BAD_KEY_SEQUENCE_NUMBER ) {
-        ESP_LOGW(TAG, "Bad key sequence number 0x%02x", status_params->status); 
-     
+    
+    // Only handle bad key sequence, ignore other statuses
+    if (status_params->status == ESP_ZB_NWK_COMMAND_STATUS_BAD_KEY_SEQUENCE_NUMBER) {
+        ESP_LOGW(TAG, "Bad key sequence detected, sending leave request");
+        esp_zb_zdo_mgmt_leave_req_param_t leave_req = {
+            .dst_nwk_addr = status_params->network_addr,
+            .rejoin = 1,  // Allow rejoin
+            .remove_children = 0
+        };
+        esp_zb_zdo_device_leave_req(&leave_req, NULL, NULL);
     }
+    break;
 }
-break;
 case ESP_ZB_ZDO_DEVICE_UNAVAILABLE:  // 0x3c
 {
     esp_zb_zdo_device_unavailable_params_t *unavailable_params = 
@@ -814,6 +844,7 @@ break;
         case ESP_ZB_BDB_SIGNAL_DEVICE_REBOOT://0x06
             ESP_LOGI(TAG, "Device reboot signal received");
         break;
+       
 
       
         default:
@@ -839,3 +870,6 @@ void display_network_key(void)
         ESP_LOGW(TAG, "Note: Network key can only be obtained after the device has joined the network");
     }
 }
+
+
+

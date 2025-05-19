@@ -99,7 +99,7 @@ esp_err_t button_init(void)
     }
 
     // Create button processing task
-    xTaskCreate(button_task, "button_task", 2048, NULL, 10, NULL);
+    xTaskCreate(button_task, "button_task", 4096, NULL, 10, NULL);
 
     ESP_LOGI(TAG, "Button initialized on GPIO %d", NETWORK_CONTROL_BTN_PIN);
     return ESP_OK;

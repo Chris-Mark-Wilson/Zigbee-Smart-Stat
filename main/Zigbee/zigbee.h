@@ -14,6 +14,7 @@
 #define MAX_CHILDREN                    10          /* the max amount of connected devices */
 #define INSTALLCODE_POLICY_ENABLE       false       /* enable the install code policy for security */
 #define HA_THERMOSTAT_ENDPOINT          10          /* esp thermostat device endpoint */
+#define IAS_ZONE_ENDPOINT               1           /* esp IAS zone device endpoint */
 #define ESP_ZB_PRIMARY_CHANNEL_MASK     (1l << 13)  /* Zigbee primary channel mask use in the example */
 
 /* Attribute values in ZCL string format
@@ -72,7 +73,7 @@ extern uint8_t stored_device_count;
 // Function declarations
 void zigbee_signal_handler(esp_zb_app_signal_t *signal_struct);
 void esp_zb_zcl_config_report_cb(esp_zb_zcl_command_send_status_message_t message);
-void clear_all_nvs(void);
+esp_err_t clear_all_nvs(void);
 
 void read_window_sensor_status(uint16_t addr, uint8_t endpoint);
 

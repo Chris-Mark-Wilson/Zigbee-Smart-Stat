@@ -335,27 +335,51 @@ static esp_zb_cluster_list_t *custom_thermostat_clusters_create(esp_zb_thermosta
     /* Add temperature measurement cluster for attribute reporting */
     ESP_ERROR_CHECK(esp_zb_cluster_list_add_temperature_meas_cluster(cluster_list, esp_zb_temperature_meas_cluster_create(NULL), ESP_ZB_ZCL_CLUSTER_CLIENT_ROLE));
      
-    /* Add IAS Zone cluster as client */
-    ESP_ERROR_CHECK(esp_zb_cluster_list_add_ias_zone_cluster(cluster_list, 
-    esp_zb_zcl_attr_list_create(ESP_ZB_ZCL_CLUSTER_ID_IAS_ZONE), 
-    ESP_ZB_ZCL_CLUSTER_CLIENT_ROLE));
 
     return cluster_list;
 }
 //do not delete, needed to bind trv for two way communication and IAS zone cluster
 //creates the endpoint and adds the clusters to it
-static esp_zb_ep_list_t *custom_thermostat_ep_create(uint8_t endpoint_id, esp_zb_thermostat_cfg_t *thermostat)
+
+// Separate cluster creation for IAS Zone endpoint
+static esp_zb_cluster_list_t *create_ias_zone_clusters(void)
+{
+    esp_zb_cluster_list_t *cluster_list = esp_zb_zcl_cluster_list_create();
+    
+    // Create empty attribute list for IAS Zone client
+    esp_zb_attribute_list_t *ias_zone_cluster = esp_zb_zcl_attr_list_create(ESP_ZB_ZCL_CLUSTER_ID_IAS_ZONE);
+    
+    ESP_ERROR_CHECK(esp_zb_cluster_list_add_ias_zone_cluster(cluster_list, 
+        ias_zone_cluster,  // Use empty list instead of NULL
+        ESP_ZB_ZCL_CLUSTER_CLIENT_ROLE));
+
+    return cluster_list;
+}
+static esp_zb_ep_list_t *create_endpoints(esp_zb_thermostat_cfg_t *thermostat)
 {
     esp_zb_ep_list_t *ep_list = esp_zb_ep_list_create();
-    esp_zb_endpoint_config_t endpoint_config = {
-        .endpoint = endpoint_id,
+
+    // First endpoint (10) - Thermostat
+    esp_zb_endpoint_config_t thermostat_ep_config = {
+        .endpoint = HA_THERMOSTAT_ENDPOINT,
         .app_profile_id = ESP_ZB_AF_HA_PROFILE_ID,
         .app_device_id = ESP_ZB_HA_THERMOSTAT_DEVICE_ID,
         .app_device_version = 0
     };
-    esp_zb_ep_list_add_ep(ep_list, custom_thermostat_clusters_create(thermostat), endpoint_config);
+    esp_zb_ep_list_add_ep(ep_list, custom_thermostat_clusters_create(thermostat), thermostat_ep_config);
+
+    // Second endpoint (1) - IAS Zone Client
+    esp_zb_endpoint_config_t ias_ep_config = {
+        .endpoint = IAS_ZONE_ENDPOINT,
+        .app_profile_id = ESP_ZB_AF_HA_PROFILE_ID,
+        .app_device_id = ESP_ZB_HA_IAS_ZONE_ID,
+        .app_device_version = 0
+    };
+    esp_zb_ep_list_add_ep(ep_list, create_ias_zone_clusters(), ias_ep_config);
+
     return ep_list;
 }
+
 
 static void zigbee_task(void *pvParameters)
 {
@@ -367,10 +391,10 @@ static void zigbee_task(void *pvParameters)
     //identifies the coordinator as a custom thermostat device
     //esential for proper device identification, supporting temp related clusters and enabling bi direction communication with the trv
     esp_zb_thermostat_cfg_t thermostat_cfg = ESP_ZB_DEFAULT_THERMOSTAT_CONFIG();
-    esp_zb_ep_list_t *esp_zb_thermostat_ep = custom_thermostat_ep_create(HA_THERMOSTAT_ENDPOINT, &thermostat_cfg);
+    esp_zb_ep_list_t *esp_zb_endpoints = create_endpoints(&thermostat_cfg);
 
     /* Register the device */
-    esp_zb_device_register(esp_zb_thermostat_ep);
+    esp_zb_device_register(esp_zb_endpoints);
 
     // Set channel mask
     esp_zb_set_primary_network_channel_set(ESP_ZB_PRIMARY_CHANNEL_MASK);
