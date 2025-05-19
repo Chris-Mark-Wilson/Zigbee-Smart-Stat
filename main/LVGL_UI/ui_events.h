@@ -5,7 +5,7 @@
 #include "ui_screens.h"
 
 typedef struct {
-    char message[64];
+    char message[100];
     screen_id_t target_screen;
 } ui_event_t;
 

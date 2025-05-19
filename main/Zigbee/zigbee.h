@@ -82,4 +82,6 @@ extern bool network_open;
 
 void display_network_key(void);
 
+void ui_display_message(const char *message);
+
 #endif // ZIGBEE_H

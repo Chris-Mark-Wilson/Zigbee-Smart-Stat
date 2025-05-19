@@ -12,6 +12,7 @@ idf_component_register(
     "Zigbee/zigbee.c"
     "Sensors/sensors.c"
      "Buttons/button.c"
+     "Helpers/helpers.c"
     INCLUDE_DIRS 
     "./LCD_Driver/Vernon_ST7789T" 
     "./LCD_Driver" 
@@ -20,6 +21,7 @@ idf_component_register(
     "./Zigbee"
     "./Sensors"
     "./Buttons"
+    "./Helpers"
     "." 
   
    

@@ -2072,7 +2072,7 @@ CONFIG_ZB_RADIO_NATIVE=y
 CONFIG_ZB_GP_ENABLED=y
 # end of Zigbee Example
 
-CONFIG_ZB_DEBUG_MODE=y
+# CONFIG_ZB_DEBUG_MODE is not set
 # end of Zigbee
 
 #

@@ -1,4 +1,3 @@
-
 #include "switch_driver.h"
 #include "dht.h"
 #include "string.h"
@@ -14,32 +13,31 @@
 
 // #include "ha/esp_zigbee_ha_standard.h"
 
-//lcd headers
+// lcd headers
 #include "ST7789.h"
 
-//zigbee headers
+// zigbee headers
 
 #include "Zigbee/zigbee.h"
 #include "Buttons/button.h"
 #include "LVGL_UI/ui_screens.h"
 #include "LVGL_UI/ui_events.h"
-//sensors headers
+// sensors headers
 #include "Sensors/sensors.h"
-//settings headers
+// settings headers
 #include "Settings/settings.h"
-
+#include "Helpers/helpers.h"
 
 // Global state tracking variables
 static int64_t g_last_presence_time = 0; // Last time presence was detected
-bool g_is_window_open=false; // Global window state
+bool g_is_window_open = false;           // Global window state
 static bool g_presence_detected = false; // Global presence state
-static bool g_trv_state = false;  // Track TRV state
+static bool g_trv_state = false;         // Track TRV state
 
 // Temperature control variables (in hundredths of degrees)
-static int16_t g_target_temp = 2000;     // 20.00°C
-static int16_t g_min_temp = 1600;        // 16.00°C
-static int16_t g_max_temp = 2400;        // 24.00°C
-
+static int16_t g_target_temp = 2000; // 20.00°C
+static int16_t g_min_temp = 1600;    // 16.00°C
+static int16_t g_max_temp = 2400;    // 24.00°C
 
 #if defined ZB_ED_ROLE
 #error Define ZB_COORDINATOR_ROLE in idf.py menuconfig to compile source code.
@@ -48,26 +46,26 @@ static int16_t g_max_temp = 2400;        // 24.00°C
 // Create queue handle for UI events
 QueueHandle_t ui_event_queue;
 
-
-
-//this exact function name MUST remain in this file
-// it is used by the zigbee library to call the signal handler
-//and it expects to find it in here or it just wont fucking work
-//its so i can put all my zigbee code in one file and not have to worry about it
-// being in the right place
+// this exact function name MUST remain in this file
+//  it is used by the zigbee library to call the signal handler
+// and it expects to find it in here or it just wont fucking work
+// its so i can put all my zigbee code in one file and not have to worry about it
+//  being in the right place
 void esp_zb_app_signal_handler(esp_zb_app_signal_t *signal_struct)
 {
     zigbee_signal_handler(signal_struct);
 }
 
-//handle window sensor state change
+
+// handle window sensor state change
 static esp_err_t zb_attribute_handler(const esp_zb_zcl_set_attr_value_message_t *message)
 {
     static const char *TAG = "ZB_ATTR_HANDLER";
     ESP_LOGI(TAG, "Attribute handler called with message: %p", message);
     esp_err_t ret = ESP_OK;
 
-    if (!message) {
+    if (!message)
+    {
         ESP_LOGE(TAG, "Empty message received");
         return ESP_FAIL;
     }
@@ -79,17 +77,18 @@ static esp_err_t zb_attribute_handler(const esp_zb_zcl_set_attr_value_message_t 
     ESP_LOGI(TAG, "  Status: 0x%02x", message->info.status);
 
     // Handle any endpoint (not just endpoint 1)
-    if (message->info.cluster == ESP_ZB_ZCL_CLUSTER_ID_IAS_ZONE) {
-        if (message->attribute.id == ESP_ZB_ZCL_ATTR_IAS_ZONE_ZONESTATUS_ID) {
+    if (message->info.cluster == ESP_ZB_ZCL_CLUSTER_ID_IAS_ZONE)
+    {
+        if (message->attribute.id == ESP_ZB_ZCL_ATTR_IAS_ZONE_ZONESTATUS_ID)
+        {
             uint16_t zone_status = *(uint16_t *)message->attribute.data.value;
             ESP_LOGI(TAG, "  Zone status: 0x%04x", zone_status);
             g_is_window_open = (zone_status & 0x0001);
-            
+
             // Trigger UI update
             ui_event_t event = {
                 .target_screen = SCREEN_MAIN,
-                .message = ""
-            };
+                .message = ""};
             xQueueSend(ui_event_queue, &event, 0);
         }
     }
@@ -100,180 +99,212 @@ static esp_err_t zb_action_handler(esp_zb_core_action_callback_id_t callback_id,
 {
     static const char *TAG = "ZB_ACTION_HANDLER";
     esp_err_t ret = ESP_OK;
-    
-        // Enhanced callback logging
-        ESP_LOGI(TAG, "Action handler called with callback ID: 0x%04x, message: %p", callback_id, message);
 
+    // Enhanced callback logging
+    // ESP_LOGI(TAG, "Action handler called with callback ID: 0x%04x, message: %p", callback_id, message);
 
-    switch (callback_id) {
-            case ESP_ZB_CORE_SET_ATTR_VALUE_CB_ID:
-            ESP_LOGI(TAG, "SET_ATTR_VALUE callback received");
-                ret = zb_attribute_handler((esp_zb_zcl_set_attr_value_message_t *)message);
-                break;
-            
-            case ESP_ZB_CORE_CMD_READ_ATTR_RESP_CB_ID:  // 0x1000
-            ESP_LOGI(TAG, "Read attribute response received");
-            if (message) {
-                const esp_zb_zcl_cmd_read_attr_resp_message_t *resp = 
-                    (esp_zb_zcl_cmd_read_attr_resp_message_t *)message;
-                
-                if (resp->info.cluster == ESP_ZB_ZCL_CLUSTER_ID_IAS_ZONE) {
-                    if (resp->variables->attribute.id == ESP_ZB_ZCL_ATTR_IAS_ZONE_ZONESTATUS_ID) {
-                        // Cast to uint16_t pointer since IAS Zone status is 16-bit
-                        uint16_t zone_status = *(uint16_t *)resp->variables->attribute.data.value;
-                        ESP_LOGI(TAG, "IAS Zone Status: 0x%04x", zone_status);
-                        
-                        // Bit 0 indicates alarm1 (usually the open/closed state)
-                        g_is_window_open = (zone_status & 0x0001);
-                        ESP_LOGI(TAG, "Window is %s", g_is_window_open ? "OPEN" : "CLOSED");
-                        
-                        // Decode other status bits if needed
-                        bool alarm2 = (zone_status & 0x0002) != 0;
-                        bool tamper = (zone_status & 0x0004) != 0;
-                        bool battery = (zone_status & 0x0008) != 0;
-                        
-                        ESP_LOGI(TAG, "Additional status - Alarm2: %d, Tamper: %d, Battery Low: %d",
-                                 alarm2, tamper, battery);
-                        
-                        // Trigger UI update
-                        ui_event_t event = {
-                            .target_screen = SCREEN_MAIN,
-                            .message = ""
-                        };
-                        xQueueSend(ui_event_queue, &event, 0);
-                    }
-                }
-            }
+    switch (callback_id)
+    {
+    case ESP_ZB_CORE_SET_ATTR_VALUE_CB_ID:
+        ESP_LOGI(TAG, "SET_ATTR_VALUE callback received");
+        ret = zb_attribute_handler((esp_zb_zcl_set_attr_value_message_t *)message);
+        break;
+
+    case ESP_ZB_CORE_CMD_READ_ATTR_RESP_CB_ID: // 0x1000
+        ESP_LOGI(TAG, "Read attribute response received");
+        if (!message)
+        {
+            ESP_LOGW(TAG, "Null message received");
             break;
-            
-        case ESP_ZB_CORE_REPORT_ATTR_CB_ID:
-        ESP_LOGI(TAG, "REPORT_ATTR callback received");
-        if (message) {
-            const esp_zb_zcl_report_attr_message_t *report = 
+        }
+
+        const esp_zb_zcl_cmd_read_attr_resp_message_t *resp =
+            (esp_zb_zcl_cmd_read_attr_resp_message_t *)message;
+
+        ESP_LOGI(TAG, "Response cluster: 0x%04x", resp->info.cluster);
+
+        // Validate response structure
+        if (!resp->variables)
+        {
+            ESP_LOGW(TAG, "Null variables in response");
+            break;
+        }
+
+        if (resp->info.cluster == ESP_ZB_ZCL_CLUSTER_ID_IAS_ZONE)
+        {
+            if (resp->variables->attribute.id == ESP_ZB_ZCL_ATTR_IAS_ZONE_ZONESTATUS_ID)
+            {
+                // Validate attribute data
+                if (!resp->variables->attribute.data.value)
+                {
+                    ESP_LOGW(TAG, "Null attribute value");
+                    break;
+                }
+
+                // Now safe to access the value
+                uint16_t zone_status = *(uint16_t *)resp->variables->attribute.data.value;
+                ESP_LOGI(TAG, "IAS Zone Status: 0x%04x", zone_status);
+
+                // Bit 0 indicates alarm1 (usually the open/closed state)
+                g_is_window_open = (zone_status & 0x0001);
+                ESP_LOGI(TAG, "Window is %s", g_is_window_open ? "OPEN" : "CLOSED");
+
+                // Decode other status bits if needed
+                bool alarm2 = (zone_status & 0x0002) != 0;
+                bool tamper = (zone_status & 0x0004) != 0;
+                bool battery = (zone_status & 0x0008) != 0;
+
+                ESP_LOGI(TAG, "Additional status - Alarm2: %d, Tamper: %d, Battery Low: %d",
+                         alarm2, tamper, battery);
+
+                // Trigger UI update
+                ui_event_t event = {
+                    .target_screen = SCREEN_MAIN,
+                    .message = ""};
+                xQueueSend(ui_event_queue, &event, 0);
+            }
+        }
+        break;
+
+    case ESP_ZB_CORE_REPORT_ATTR_CB_ID:
+        // ESP_LOGI(TAG, "REPORT_ATTR callback received");
+        if (message)
+        {
+            const esp_zb_zcl_report_attr_message_t *report =
                 (esp_zb_zcl_report_attr_message_t *)message;
-            ESP_LOGI(TAG, "Report details:");
-            ESP_LOGI(TAG, "  Source addr: 0x%04x", report->src_address.u.short_addr);
-            ESP_LOGI(TAG, "  Source endpoint: %d", report->src_endpoint);
-            ESP_LOGI(TAG, "  Cluster: 0x%04x", report->cluster);
-            ESP_LOGI(TAG, "  Attribute ID: 0x%04x", report->attribute.id);
-            
+            // ESP_LOGI(TAG, "Report details:");
+            // ESP_LOGI(TAG, "  Source addr: 0x%04x", report->src_address.u.short_addr);
+            // ESP_LOGI(TAG, "  Source endpoint: %d", report->src_endpoint);
+            // ESP_LOGI(TAG, "  Cluster: 0x%04x", report->cluster);
+            // ESP_LOGI(TAG, "  Attribute ID: 0x%04x", report->attribute.id);
+
             // Check for IAS Zone cluster (0x0500)
-            if (report->cluster == ESP_ZB_ZCL_CLUSTER_ID_IAS_ZONE) {
-                if (report->attribute.id == ESP_ZB_ZCL_ATTR_IAS_ZONE_ZONESTATUS_ID) {
+            if (report->cluster == ESP_ZB_ZCL_CLUSTER_ID_IAS_ZONE)
+            {
+                if (report->attribute.id == ESP_ZB_ZCL_ATTR_IAS_ZONE_ZONESTATUS_ID)
+                {
                     uint16_t zone_status = *(uint16_t *)report->attribute.data.value;
                     ESP_LOGI(TAG, "  Zone status: 0x%04x", zone_status);
                     g_is_window_open = (zone_status & 0x0001);
-                    
+
                     // Trigger UI update
                     ui_event_t event = {
                         .target_screen = SCREEN_MAIN,
-                        .message = ""
-                    };
+                        .message = ""};
                     xQueueSend(ui_event_queue, &event, 0);
                 }
             }
         }
         break;
 
-        case ESP_ZB_CORE_CMD_DEFAULT_RESP_CB_ID:
+    case ESP_ZB_CORE_CMD_DEFAULT_RESP_CB_ID:
         ESP_LOGI(TAG, "DEFAULT_RESP callback received");
-        if (message) {
-            const esp_zb_zcl_cmd_default_resp_message_t *resp = 
+        if (message)
+        {
+            const esp_zb_zcl_cmd_default_resp_message_t *resp =
                 (esp_zb_zcl_cmd_default_resp_message_t *)message;
             ESP_LOGI(TAG, "Default response details:");
             ESP_LOGI(TAG, "  Status: 0x%02x", resp->status_code);
             ESP_LOGI(TAG, "  Cluster: 0x%04x", resp->info.cluster);
             ESP_LOGI(TAG, "  Command ID: 0x%02x", resp->info.command.id); // Add this
-            
-            if (resp->info.cluster == ESP_ZB_ZCL_CLUSTER_ID_IAS_ZONE) {
+
+            if (resp->info.cluster == ESP_ZB_ZCL_CLUSTER_ID_IAS_ZONE)
+            {
                 ESP_LOGI("IAS ZONE: ", "IAS Zone command response:");
-                if (resp->status_code == ESP_ZB_ZCL_STATUS_SUCCESS) {
+                if (resp->status_code == ESP_ZB_ZCL_STATUS_SUCCESS)
+                {
                     ESP_LOGI(TAG, "Command accepted by sensor");
-                } else {
+                }
+                else
+                {
                     ESP_LOGW(TAG, "Command rejected with status: 0x%02x", resp->status_code);
                 }
             }
         }
         break;
-                        
-        case ESP_ZB_CORE_CMD_WRITE_ATTR_RESP_CB_ID:  // 0x1001
+
+    case ESP_ZB_CORE_CMD_WRITE_ATTR_RESP_CB_ID: // 0x1001
         ESP_LOGI(TAG, "Write attribute response received");
-        if (message) {
-            const esp_zb_zcl_cmd_write_attr_resp_message_t *resp = 
+        if (message)
+        {
+            const esp_zb_zcl_cmd_write_attr_resp_message_t *resp =
                 (esp_zb_zcl_cmd_write_attr_resp_message_t *)message;
             ESP_LOGI(TAG, "Write response status: 0x%02x", resp->info.status);
         }
         break;
 
-        case ESP_ZB_CORE_CMD_REPORT_CONFIG_RESP_CB_ID:
+    case ESP_ZB_CORE_CMD_REPORT_CONFIG_RESP_CB_ID:
         ESP_LOGI("IAS CONFIG", "Report config response received");
-        if (message) {
-            const esp_zb_zcl_cmd_write_attr_resp_message_t *resp = 
+        if (message)
+        {
+            const esp_zb_zcl_cmd_write_attr_resp_message_t *resp =
                 (esp_zb_zcl_cmd_write_attr_resp_message_t *)message;
-            if (resp->info.status == ESP_ZB_ZCL_STATUS_SUCCESS) {
+            if (resp->info.status == ESP_ZB_ZCL_STATUS_SUCCESS)
+            {
                 ESP_LOGI(TAG, "Report configuration accepted by sensor");
-            } else {
+            }
+            else
+            {
                 ESP_LOGE(TAG, "Report configuration rejected with status: 0x%02x", resp->info.status);
             }
             ESP_LOGI(TAG, "Report config response details:");
             ESP_LOGI(TAG, "  Status: 0x%02x", resp->info.status);
             ESP_LOGI(TAG, "  Cluster: 0x%04x", resp->info.cluster);
-         
         }
         break;
 
-        case ESP_ZB_ZDO_SIGNAL_LEAVE_INDICATION:
-        ESP_LOGI(TAG, "Device leave indication received");
+    case ESP_ZB_ZDO_SIGNAL_LEAVE_INDICATION:
+        ESP_LOGI(TAG, "Device leave indication received in action handler");
         break;
 
-        case ESP_ZB_CORE_CMD_IAS_ZONE_ZONE_STATUS_CHANGE_NOT_ID: //0x0038
+    case ESP_ZB_CORE_CMD_IAS_ZONE_ZONE_STATUS_CHANGE_NOT_ID: // 0x0038
         ESP_LOGI("IAS Zone Action Handler", "IAS Zone status change notification received");
-        if (message) {
-            const esp_zb_zcl_ias_zone_status_change_notification_message_t *status = 
+        if (message)
+        {
+            const esp_zb_zcl_ias_zone_status_change_notification_message_t *status =
                 (esp_zb_zcl_ias_zone_status_change_notification_message_t *)message;
             ESP_LOGI("IAS Zone Action Handler", "Zone status: 0x%04x", status->zone_status);
             g_is_window_open = (status->zone_status & 0x0001);
-            
+
             // Trigger UI update
             ui_event_t event = {
                 .target_screen = SCREEN_MAIN,
-                .message = ""
-            };
+                .message = ""};
             xQueueSend(ui_event_queue, &event, 0);
         }
         break;
-            break;
+        break;
 
-        case ESP_ZB_ZDO_SIGNAL_DEVICE_ANNCE:
-            ESP_LOGI(TAG, "Device announce signal received");
-            break;
-            
-        default:
-            ESP_LOGW(TAG, "Unhandled Zigbee action(0x%x) callback", callback_id);
-            break;
+    case ESP_ZB_ZDO_SIGNAL_DEVICE_ANNCE:
+        ESP_LOGI(TAG, "Device announce signal received in action handler");
+        break;
+
+    default:
+        ESP_LOGW(TAG, "Unhandled Zigbee action(0x%x) callback", callback_id);
+        break;
     }
     return ret;
 }
 
 // TODO implement when everything is bound and getting data
-static void evaluate_control_logic(void){}
+static void evaluate_control_logic(void) {}
 
 static void lvgl_task(void *pvParameters)
 {
     while (1)
     {
-        lv_task_handler();  // Keep this as it's needed for LVGL core functionality
-        vTaskDelay(pdMS_TO_TICKS(10));  // Reduced delay for smoother updates
+        lv_task_handler();             // Keep this as it's needed for LVGL core functionality
+        vTaskDelay(pdMS_TO_TICKS(10)); // Reduced delay for smoother updates
     }
 }
 
 static void dht_sensor_task(void *pvParameters)
 {
 
-    #define TAG "DHT_SENSOR"
+#define TAG "DHT_SENSOR"
     // Initialize dht sensor
     esp_err_t dht_ret = dht_sensor_init();
-   
+
     if (dht_ret != ESP_OK)
     {
         ESP_LOGE(TAG, "Failed to initialize DHT sensor");
@@ -283,12 +314,10 @@ static void dht_sensor_task(void *pvParameters)
     // Initialize timer for control logic
     g_last_presence_time = esp_timer_get_time() / 1000; // Current time in ms
 
-
     ESP_LOGI(TAG, "temp and humidity monitoring task started");
     ESP_LOGI(TAG, "Control settings: Safety temp: %.1f°C, Comfort temp: %.1f°C, Presence timeout: %d sec",
              MIN_SAFETY_TEMP, COMFORT_TEMP, PRESENCE_TIMEOUT_MS / 1000);
 
- 
     // Main task loop
 
     while (1)
@@ -299,18 +328,16 @@ static void dht_sensor_task(void *pvParameters)
         {
             read_dht_sensor();
             temp_counter = 0;
-
         }
-  
+
         // Run control logic at normal interval
         if (temp_counter == 0)
         {
             evaluate_control_logic();
-            ESP_LOGI(TAG, "DHT Readings - Temperature: %.1f°C, Humidity: %.1f%%", g_temperature, g_humidity);
+            // ESP_LOGI(TAG, "DHT Readings - Temperature: %.1f°C, Humidity: %.1f%%", g_temperature, g_humidity);
             ui_event_t event = {
                 .target_screen = SCREEN_MAIN,
-                .message = ""
-            };
+                .message = ""};
             xQueueSend(ui_event_queue, &event, 0);
         }
 
@@ -319,39 +346,49 @@ static void dht_sensor_task(void *pvParameters)
     }
 }
 
-//do not delete, needed to bind trv for two way communication 
-//Adds IAS Zone cluster to the endpoint
-//and adds the temperature measurement cluster for attribute reporting
+// do not delete, needed to bind trv for two way communication
+// Adds IAS Zone cluster to the endpoint
+// and adds the temperature measurement cluster for attribute reporting
 static esp_zb_cluster_list_t *custom_thermostat_clusters_create(esp_zb_thermostat_cfg_t *thermostat)
 {
+    // esp_zb_cluster_list_t *cluster_list = esp_zb_zcl_cluster_list_create();
+    // esp_zb_attribute_list_t *basic_cluster = esp_zb_basic_cluster_create(&(thermostat->basic_cfg));
+    // ESP_ERROR_CHECK(esp_zb_basic_cluster_add_attr(basic_cluster, ESP_ZB_ZCL_ATTR_BASIC_MANUFACTURER_NAME_ID, MANUFACTURER_NAME));
+    // ESP_ERROR_CHECK(esp_zb_basic_cluster_add_attr(basic_cluster, ESP_ZB_ZCL_ATTR_BASIC_MODEL_IDENTIFIER_ID, MODEL_IDENTIFIER));
+    // ESP_ERROR_CHECK(esp_zb_cluster_list_add_basic_cluster(cluster_list, basic_cluster, ESP_ZB_ZCL_CLUSTER_SERVER_ROLE));
+    // ESP_ERROR_CHECK(esp_zb_cluster_list_add_identify_cluster(cluster_list, esp_zb_identify_cluster_create(&(thermostat->identify_cfg)), ESP_ZB_ZCL_CLUSTER_SERVER_ROLE));
+    // ESP_ERROR_CHECK(esp_zb_cluster_list_add_identify_cluster(cluster_list, esp_zb_zcl_attr_list_create(ESP_ZB_ZCL_CLUSTER_ID_IDENTIFY), ESP_ZB_ZCL_CLUSTER_CLIENT_ROLE));
+    // ESP_ERROR_CHECK(esp_zb_cluster_list_add_thermostat_cluster(cluster_list, esp_zb_thermostat_cluster_create(&(thermostat->thermostat_cfg)), ESP_ZB_ZCL_CLUSTER_SERVER_ROLE));
+    // /* Add temperature measurement cluster for attribute reporting */
+    // ESP_ERROR_CHECK(esp_zb_cluster_list_add_temperature_meas_cluster(cluster_list, esp_zb_temperature_meas_cluster_create(NULL), ESP_ZB_ZCL_CLUSTER_CLIENT_ROLE));
+
     esp_zb_cluster_list_t *cluster_list = esp_zb_zcl_cluster_list_create();
+    
+    // Basic cluster is required for proper device identification
     esp_zb_attribute_list_t *basic_cluster = esp_zb_basic_cluster_create(&(thermostat->basic_cfg));
-    ESP_ERROR_CHECK(esp_zb_basic_cluster_add_attr(basic_cluster, ESP_ZB_ZCL_ATTR_BASIC_MANUFACTURER_NAME_ID, MANUFACTURER_NAME));
-    ESP_ERROR_CHECK(esp_zb_basic_cluster_add_attr(basic_cluster, ESP_ZB_ZCL_ATTR_BASIC_MODEL_IDENTIFIER_ID, MODEL_IDENTIFIER));
     ESP_ERROR_CHECK(esp_zb_cluster_list_add_basic_cluster(cluster_list, basic_cluster, ESP_ZB_ZCL_CLUSTER_SERVER_ROLE));
-    ESP_ERROR_CHECK(esp_zb_cluster_list_add_identify_cluster(cluster_list, esp_zb_identify_cluster_create(&(thermostat->identify_cfg)), ESP_ZB_ZCL_CLUSTER_SERVER_ROLE));
-    ESP_ERROR_CHECK(esp_zb_cluster_list_add_identify_cluster(cluster_list, esp_zb_zcl_attr_list_create(ESP_ZB_ZCL_CLUSTER_ID_IDENTIFY), ESP_ZB_ZCL_CLUSTER_CLIENT_ROLE));
-    ESP_ERROR_CHECK(esp_zb_cluster_list_add_thermostat_cluster(cluster_list, esp_zb_thermostat_cluster_create(&(thermostat->thermostat_cfg)), ESP_ZB_ZCL_CLUSTER_SERVER_ROLE));
-    /* Add temperature measurement cluster for attribute reporting */
-    ESP_ERROR_CHECK(esp_zb_cluster_list_add_temperature_meas_cluster(cluster_list, esp_zb_temperature_meas_cluster_create(NULL), ESP_ZB_ZCL_CLUSTER_CLIENT_ROLE));
-     
+    
+    // Thermostat cluster for mode control (ON/OFF)
+    ESP_ERROR_CHECK(esp_zb_cluster_list_add_thermostat_cluster(cluster_list, 
+        esp_zb_thermostat_cluster_create(&(thermostat->thermostat_cfg)), 
+        ESP_ZB_ZCL_CLUSTER_SERVER_ROLE));
 
     return cluster_list;
 }
-//do not delete, needed to bind trv for two way communication and IAS zone cluster
-//creates the endpoint and adds the clusters to it
+// do not delete, needed to bind trv for two way communication and IAS zone cluster
+// creates the endpoint and adds the clusters to it
 
 // Separate cluster creation for IAS Zone endpoint
 static esp_zb_cluster_list_t *create_ias_zone_clusters(void)
 {
     esp_zb_cluster_list_t *cluster_list = esp_zb_zcl_cluster_list_create();
-    
+
     // Create empty attribute list for IAS Zone client
     esp_zb_attribute_list_t *ias_zone_cluster = esp_zb_zcl_attr_list_create(ESP_ZB_ZCL_CLUSTER_ID_IAS_ZONE);
-    
-    ESP_ERROR_CHECK(esp_zb_cluster_list_add_ias_zone_cluster(cluster_list, 
-        ias_zone_cluster,  // Use empty list instead of NULL
-        ESP_ZB_ZCL_CLUSTER_CLIENT_ROLE));
+
+    ESP_ERROR_CHECK(esp_zb_cluster_list_add_ias_zone_cluster(cluster_list,
+                                                             ias_zone_cluster, // Use empty list instead of NULL
+                                                             ESP_ZB_ZCL_CLUSTER_CLIENT_ROLE));
 
     return cluster_list;
 }
@@ -364,8 +401,7 @@ static esp_zb_ep_list_t *create_endpoints(esp_zb_thermostat_cfg_t *thermostat)
         .endpoint = HA_THERMOSTAT_ENDPOINT,
         .app_profile_id = ESP_ZB_AF_HA_PROFILE_ID,
         .app_device_id = ESP_ZB_HA_THERMOSTAT_DEVICE_ID,
-        .app_device_version = 0
-    };
+        .app_device_version = 0};
     esp_zb_ep_list_add_ep(ep_list, custom_thermostat_clusters_create(thermostat), thermostat_ep_config);
 
     // Second endpoint (1) - IAS Zone Client
@@ -373,13 +409,11 @@ static esp_zb_ep_list_t *create_endpoints(esp_zb_thermostat_cfg_t *thermostat)
         .endpoint = IAS_ZONE_ENDPOINT,
         .app_profile_id = ESP_ZB_AF_HA_PROFILE_ID,
         .app_device_id = ESP_ZB_HA_IAS_ZONE_ID,
-        .app_device_version = 0
-    };
+        .app_device_version = 0};
     esp_zb_ep_list_add_ep(ep_list, create_ias_zone_clusters(), ias_ep_config);
 
     return ep_list;
 }
-
 
 static void zigbee_task(void *pvParameters)
 {
@@ -388,8 +422,8 @@ static void zigbee_task(void *pvParameters)
     esp_zb_init(&zb_nwk_cfg);
 
     /* Create customized thermostat endpoint */
-    //identifies the coordinator as a custom thermostat device
-    //esential for proper device identification, supporting temp related clusters and enabling bi direction communication with the trv
+    // identifies the coordinator as a custom thermostat device
+    // esential for proper device identification, supporting temp related clusters and enabling bi direction communication with the trv
     esp_zb_thermostat_cfg_t thermostat_cfg = ESP_ZB_DEFAULT_THERMOSTAT_CONFIG();
     esp_zb_ep_list_t *esp_zb_endpoints = create_endpoints(&thermostat_cfg);
 
@@ -398,55 +432,56 @@ static void zigbee_task(void *pvParameters)
 
     // Set channel mask
     esp_zb_set_primary_network_channel_set(ESP_ZB_PRIMARY_CHANNEL_MASK);
-    
-    esp_zb_core_action_handler_register(zb_action_handler);
 
+    esp_zb_core_action_handler_register(zb_action_handler);
 
     // Start Zigbee stack with autostart
     ESP_ERROR_CHECK(esp_zb_start(false));
-  
 
     // Enter Zigbee main loop
     esp_zb_stack_main_loop();
 }
 
-
-
 static void hmmd_read_task(void *arg)
 {
-    if(!g_hmmd_initialised)
+    if (!g_hmmd_initialised)
     {
         ESP_LOGE(TAG, "HMMD sensor not initialized");
         return;
     }
     uint8_t data[128];
     char *range_str;
-    
+
     ESP_LOGI(TAG, "HMMD task started with initial range limit: %.1f cm", g_range_limit);
-    
-    while (1) {
+
+    while (1)
+    {
         int len = uart_read_bytes(HMMD_UART_NUM, data, sizeof(data) - 1, pdMS_TO_TICKS(100));
-        
-        if (len > 0) {
+
+        if (len > 0)
+        {
             data[len] = '\0';
-            
+
             // Look for "Range " instead of "range:"
             range_str = strstr((char *)data, "Range ");
-            if (range_str) {
+            if (range_str)
+            {
                 float range_cm;
-                if (sscanf(range_str, "Range %f", &range_cm) == 1) {
-                    g_current_range = range_cm;  // Update the global range variable defined in ui_screens.h
+                if (sscanf(range_str, "Range %f", &range_cm) == 1)
+                {
+                    g_current_range = range_cm; // Update the global range variable defined in ui_screens.h
                     // Update presence state
-                 
+
                     g_presence_detected = (range_cm < g_range_limit);
 
                     // Always trigger UI update when we get valid range data
                     ui_event_t event = {
                         .target_screen = SCREEN_MAIN,
-                        .message = ""
-                    };
+                        .message = ""};
                     xQueueSend(ui_event_queue, &event, 0);
-                } else {
+                }
+                else
+                {
                     ESP_LOGW(TAG, "Failed to parse range value from: %s", range_str);
                 }
             }
@@ -455,122 +490,110 @@ static void hmmd_read_task(void *arg)
     }
 }
 
-
-
-
 // Callback function for button press
 static void button_pressed_cb(button_event_t event)
 {
-    
 
-    switch (event) {
-        case BUTTON_PRESSED:{
-            ESP_LOGI(TAG, "Button pressed - waiting for release");
-            //address of the window sensor and endpoint
-            
-            uint16_t addr = stored_devices[0].short_addr; // Replace with actual address
-            uint8_t endpoint = stored_devices[0].endpoint; // Replace with actual endpoint
-            read_window_sensor_status(addr, endpoint);
-            
-            break;
+    switch (event)
+    {
+    case BUTTON_PRESSED:
+    {
+        ESP_LOGI(TAG, "Button pressed - waiting for release");
+        // address of the window sensor and endpoint
+
+        uint16_t addr = stored_devices[0].short_addr;  // Replace with actual address
+        uint8_t endpoint = stored_devices[0].endpoint; // Replace with actual endpoint
+        read_window_sensor_status(addr, endpoint);
+
+        break;
+    }
+
+    case BUTTON_RELEASED:
+    {
+        if (current_screen == SCREEN_BOOT && network_open)
+        {
+            ESP_LOGI(TAG, "Closing network on button press");
+            close_network();
+            ui_switch_screen(SCREEN_MAIN);
         }
-
-        case BUTTON_RELEASED: {
-            if (current_screen == SCREEN_BOOT && network_open) {
-                ESP_LOGI(TAG, "Closing network on button press");
-                close_network();
-                ui_switch_screen(SCREEN_MAIN);
-            } 
-            else if (current_screen == SCREEN_MAIN) {
-                if (stored_device_count > 0) {
-                    // Toggle between min and max temperature and corresponding mode
-                    g_trv_state = !g_trv_state;
-                    g_target_temp = g_trv_state ? g_max_temp : g_min_temp;
-                    
-                    // First write the system mode (OFF/HEAT)
-                    esp_zb_zcl_write_attr_cmd_t mode_cmd = {
-                        .zcl_basic_cmd = {
-                            .dst_addr_u.addr_short = stored_devices[0].short_addr,
-                            .dst_endpoint = stored_devices[0].endpoint,
-                            .src_endpoint = HA_THERMOSTAT_ENDPOINT,
-                        },
-                        .address_mode = ESP_ZB_APS_ADDR_MODE_16_ENDP_PRESENT,
-                        .clusterID = ESP_ZB_ZCL_CLUSTER_ID_THERMOSTAT,
-                        .direction = ESP_ZB_ZCL_CMD_DIRECTION_TO_SRV,
-                        .attr_number = 1,
-                        .attr_field = &(esp_zb_zcl_attribute_t){
-                            .id = ESP_ZB_ZCL_ATTR_THERMOSTAT_SYSTEM_MODE_ID,
-                            .data.type = ESP_ZB_ZCL_ATTR_TYPE_8BIT_ENUM,  // Use 8-bit enum type
-                            .data.size = sizeof(uint8_t),
-                            .data.value = (uint8_t*)(g_trv_state ? 
-                                &(uint8_t){ESP_ZB_ZCL_THERMOSTAT_SYSTEM_MODE_HEAT} : 
-                                &(uint8_t){ESP_ZB_ZCL_THERMOSTAT_SYSTEM_MODE_OFF})
-                        }
-                    };
-                    
-                  
-                    // uint16_t addr = stored_devices[0].short_addr; // Replace with actual address
-                    // uint8_t endpoint = stored_devices[0].endpoint; // Replace with actual endpoint
-                    // read_window_sensor_status(addr, endpoint);
-                    
-                    // // Also display the network key for debugging
-                    // display_network_key();
-                } else {
-                    ESP_LOGW(TAG, "No devices stored - cannot send commands");
-                    // Display network key even if no devices are paired
-                    display_network_key();
+        else if (current_screen == SCREEN_MAIN)
+        {
+            if (stored_device_count > 0)
+            { show_stored_devices();
+                // Toggle between min and max temperature and corresponding mode
+                g_trv_state = !g_trv_state;
+                g_target_temp = g_trv_state ? g_max_temp : g_min_temp;
+                if (g_trv_state)
+                {
+                    turn_trvs_on();
                 }
+                else
+                {
+                    turn_trvs_off();
+                }
+
+                // // Also display the network key for debugging
+                display_network_key();
             }
-            break;
+            else
+            {
+                ESP_LOGW(TAG, "No devices stored - cannot send commands");
+                // Display network key even if no devices are paired
+                display_network_key();
+            }
         }
-        case BUTTON_LONG_PRESS: {
-            ESP_LOGI(TAG, "Long press detected - leaving network and clearing NVS");
-            esp_zb_zdo_mgmt_leave_req_param_t leave_req = {
-                .dst_nwk_addr = 0x0000,
-                .rejoin = 0,
-                .remove_children = 1
-            };
-            esp_zb_zdo_device_leave_req(&leave_req, NULL, NULL);
-            vTaskDelay(pdMS_TO_TICKS(1000));
-            clear_all_nvs();
-            esp_restart();
-            break;
-        }
+        break;
+    }
+    case BUTTON_LONG_PRESS:
+    {
+        ESP_LOGI(TAG, "Long press detected - leaving network and clearing NVS");
+        esp_zb_zdo_mgmt_leave_req_param_t leave_req = {
+            .dst_nwk_addr = 0x0000,
+            .rejoin = 0,
+            .remove_children = 1};
+        esp_zb_zdo_device_leave_req(&leave_req, NULL, NULL);
+        vTaskDelay(pdMS_TO_TICKS(1000));
+        clear_all_nvs();
+        esp_restart();
+        break;
+    }
     }
 }
 
-static void ui_update_task(void *pvParameters) {
+static void ui_update_task(void *pvParameters)
+{
     ui_event_t event;
-    
-    while (1) {
-        if (xQueueReceive(ui_event_queue, &event, portMAX_DELAY)) {
-            // Handle UI update in LVGL context
-            switch (event.target_screen) {
-                case SCREEN_BOOT:
-                    ui_update_boot_status(event.message);
-                    break;
-                    case SCREEN_MAIN:
-                    ui_update_main_screen(
-                        g_temperature > 0 ? g_temperature : 0.0f,
-                        g_humidity > 0 ? g_humidity : 0.0f,
-                        g_presence_detected,
-                        g_is_window_open
-                    );
-                    break;
-                    
-                case SCREEN_SETTINGS:
-                    ui_update_settings(
-                        g_target_high_temp,
-                        g_target_low_temp,
-                        g_current_range
-                    );
-                    break;
 
-                case SCREEN_COUNT:
+    while (1)
+    {
+        if (xQueueReceive(ui_event_queue, &event, portMAX_DELAY))
+        {
+            // Handle UI update in LVGL context
+            switch (event.target_screen)
+            {
+            case SCREEN_BOOT:
+                ui_update_boot_status(event.message);
+                break;
+            case SCREEN_MAIN:
+                ui_update_main_screen(
+                    g_temperature > 0 ? g_temperature : 0.0f,
+                    g_humidity > 0 ? g_humidity : 0.0f,
+                    g_presence_detected,
+                    g_is_window_open);
+                break;
+
+            case SCREEN_SETTINGS:
+                ui_update_settings(
+                    g_target_high_temp,
+                    g_target_low_temp,
+                    g_current_range);
+                break;
+
+            case SCREEN_COUNT:
                 // This is just a count value, shouldn't be used as a screen
                 ESP_LOGW(TAG, "Invalid screen value SCREEN_COUNT received");
                 break;
-            
+
             default:
                 ESP_LOGW(TAG, "Unknown screen value: %d", event.target_screen);
                 break;
@@ -594,21 +617,24 @@ void app_main(void)
     ESP_ERROR_CHECK(nvs_flash_init());
     ESP_ERROR_CHECK(esp_zb_platform_config(&config));
 
-    LCD_Init();   
-    LVGL_Init(); 
+    LCD_Init();
+    LVGL_Init();
     esp_err_t ret = hmmd_uart_init();
-    if(ret != ESP_OK)
+    if (ret != ESP_OK)
     {
         ESP_LOGE(TAG, "Failed to initialize HMMD UART");
         return;
-    } else {
+    }
+    else
+    {
         ESP_LOGI(TAG, "HMMD UART initialized successfully");
         g_hmmd_initialised = true;
     }
 
     // Create UI event queue first
     ui_event_queue = xQueueCreate(10, sizeof(ui_event_t));
-    if (ui_event_queue == NULL) {
+    if (ui_event_queue == NULL)
+    {
         ESP_LOGE(TAG, "Failed to create UI event queue");
         return;
     }
@@ -622,5 +648,4 @@ void app_main(void)
     xTaskCreate(zigbee_task, "Zigbee_main", 4096, NULL, 5, NULL);
     xTaskCreate(hmmd_read_task, "HMMD_read", 2048, NULL, 4, NULL);
     xTaskCreate(dht_sensor_task, "DHT_sensor", 2048, NULL, 4, NULL);
-   
 }
