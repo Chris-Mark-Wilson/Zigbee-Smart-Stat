@@ -483,38 +483,38 @@ static void button_pressed_cb(button_event_t event)
             } 
             else if (current_screen == SCREEN_MAIN) {
                 if (stored_device_count > 0) {
-                    // // Toggle between min and max temperature and corresponding mode
-                    // g_trv_state = !g_trv_state;
-                    // g_target_temp = g_trv_state ? g_max_temp : g_min_temp;
+                    // Toggle between min and max temperature and corresponding mode
+                    g_trv_state = !g_trv_state;
+                    g_target_temp = g_trv_state ? g_max_temp : g_min_temp;
                     
-                    // // First write the system mode (OFF/HEAT)
-                    // esp_zb_zcl_write_attr_cmd_t mode_cmd = {
-                    //     .zcl_basic_cmd = {
-                    //         .dst_addr_u.addr_short = stored_devices[0].short_addr,
-                    //         .dst_endpoint = stored_devices[0].endpoint,
-                    //         .src_endpoint = HA_THERMOSTAT_ENDPOINT,
-                    //     },
-                    //     .address_mode = ESP_ZB_APS_ADDR_MODE_16_ENDP_PRESENT,
-                    //     .clusterID = ESP_ZB_ZCL_CLUSTER_ID_THERMOSTAT,
-                    //     .direction = ESP_ZB_ZCL_CMD_DIRECTION_TO_SRV,
-                    //     .attr_number = 1,
-                    //     .attr_field = &(esp_zb_zcl_attribute_t){
-                    //         .id = ESP_ZB_ZCL_ATTR_THERMOSTAT_SYSTEM_MODE_ID,
-                    //         .data.type = ESP_ZB_ZCL_ATTR_TYPE_8BIT_ENUM,  // Use 8-bit enum type
-                    //         .data.size = sizeof(uint8_t),
-                    //         .data.value = (uint8_t*)(g_trv_state ? 
-                    //             &(uint8_t){ESP_ZB_ZCL_THERMOSTAT_SYSTEM_MODE_HEAT} : 
-                    //             &(uint8_t){ESP_ZB_ZCL_THERMOSTAT_SYSTEM_MODE_OFF})
-                    //     }
-                    // };
+                    // First write the system mode (OFF/HEAT)
+                    esp_zb_zcl_write_attr_cmd_t mode_cmd = {
+                        .zcl_basic_cmd = {
+                            .dst_addr_u.addr_short = stored_devices[0].short_addr,
+                            .dst_endpoint = stored_devices[0].endpoint,
+                            .src_endpoint = HA_THERMOSTAT_ENDPOINT,
+                        },
+                        .address_mode = ESP_ZB_APS_ADDR_MODE_16_ENDP_PRESENT,
+                        .clusterID = ESP_ZB_ZCL_CLUSTER_ID_THERMOSTAT,
+                        .direction = ESP_ZB_ZCL_CMD_DIRECTION_TO_SRV,
+                        .attr_number = 1,
+                        .attr_field = &(esp_zb_zcl_attribute_t){
+                            .id = ESP_ZB_ZCL_ATTR_THERMOSTAT_SYSTEM_MODE_ID,
+                            .data.type = ESP_ZB_ZCL_ATTR_TYPE_8BIT_ENUM,  // Use 8-bit enum type
+                            .data.size = sizeof(uint8_t),
+                            .data.value = (uint8_t*)(g_trv_state ? 
+                                &(uint8_t){ESP_ZB_ZCL_THERMOSTAT_SYSTEM_MODE_HEAT} : 
+                                &(uint8_t){ESP_ZB_ZCL_THERMOSTAT_SYSTEM_MODE_OFF})
+                        }
+                    };
                     
                   
-                    uint16_t addr = stored_devices[0].short_addr; // Replace with actual address
-                    uint8_t endpoint = stored_devices[0].endpoint; // Replace with actual endpoint
-                    read_window_sensor_status(addr, endpoint);
+                    // uint16_t addr = stored_devices[0].short_addr; // Replace with actual address
+                    // uint8_t endpoint = stored_devices[0].endpoint; // Replace with actual endpoint
+                    // read_window_sensor_status(addr, endpoint);
                     
-                    // Also display the network key for debugging
-                    display_network_key();
+                    // // Also display the network key for debugging
+                    // display_network_key();
                 } else {
                     ESP_LOGW(TAG, "No devices stored - cannot send commands");
                     // Display network key even if no devices are paired
@@ -620,7 +620,7 @@ void app_main(void)
     xTaskCreate(lvgl_task, "lvgl_handler", 4096, NULL, 6, NULL);
     xTaskCreate(ui_update_task, "ui_update", 4096, NULL, 5, NULL);
     xTaskCreate(zigbee_task, "Zigbee_main", 4096, NULL, 5, NULL);
-    // xTaskCreate(hmmd_read_task, "HMMD_read", 2048, NULL, 4, NULL);
-    // xTaskCreate(dht_sensor_task, "DHT_sensor", 2048, NULL, 4, NULL);
+    xTaskCreate(hmmd_read_task, "HMMD_read", 2048, NULL, 4, NULL);
+    xTaskCreate(dht_sensor_task, "DHT_sensor", 2048, NULL, 4, NULL);
    
 }
