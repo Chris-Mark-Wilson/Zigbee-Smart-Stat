@@ -7,8 +7,7 @@ Done:
     button long press clears nvs
     button short press closes network
 
-    button short press when network is closed reopens network -
-    need to change this so it toggles screens if network isnt open
+    button short press when network closed toggles trv's, shows stored devices
 
 
 
@@ -39,6 +38,8 @@ Done:
             show 'error' if error
 
             display updates presence detected with icon
+
+    window sensor binds succesfully and sends reports
 
 Todo:
 

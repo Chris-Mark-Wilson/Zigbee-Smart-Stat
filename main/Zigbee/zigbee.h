@@ -64,12 +64,17 @@ typedef struct {
     int64_t last_seen;  // Timestamp for device tracking
 } zigbee_device_t;
 
+
 // Global state tracking variables
 extern bool g_is_window_open; // Global window state
+extern bool network_open;
+extern uint8_t stored_device_count;
+extern uint8_t trv_count;
+extern uint8_t window_sensor_count;
 
 // Declare external array
 extern zigbee_device_t stored_devices[MAX_TRV_DEVICES + MAX_WINDOW_SENSORS];
-extern uint8_t stored_device_count;
+
 // Function declarations
 void zigbee_signal_handler(esp_zb_app_signal_t *signal_struct);
 void esp_zb_zcl_config_report_cb(esp_zb_zcl_command_send_status_message_t message);
@@ -78,7 +83,6 @@ esp_err_t clear_all_nvs(void);
 void read_window_sensor_status(uint16_t addr, uint8_t endpoint);
 
 esp_err_t close_network(void);
-extern bool network_open;
 
 void display_network_key(void);
 

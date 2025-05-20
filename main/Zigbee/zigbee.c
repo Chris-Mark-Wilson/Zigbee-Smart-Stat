@@ -7,14 +7,11 @@
 #include "../LVGL_UI/ui_screens.h"
 #include "../LVGL_UI/ui_events.h"
 #include "../Helpers/helpers.h"
+#include "../NVS/nvs_functions.h"
 
-#define NVS_NAMESPACE "zigbee"
-#define MAX_DEVICE_NAME_LENGTH 32
-#define NVS_COMMIT_TIMEOUT_MS 1000
-#define REJOIN_THRESHOLD_MS 5000
 
-#define NVS_KEY_DEVICE_COUNT "dev_count"
-#define NVS_KEY_DEVICE_BASE "device_"
+
+
 #define MAX_TRV_DEVICES 2
 #define MAX_WINDOW_SENSORS 3
 #define MAX_DEVICE_NAME_LENGTH 32
@@ -36,228 +33,23 @@ static const char *TAG = "ZIGBEE";
 zigbee_device_t stored_devices[MAX_TRV_DEVICES + MAX_WINDOW_SENSORS];
 
 uint8_t stored_device_count = 0;
-static uint8_t trv_count = 0;
-static uint8_t window_sensor_count = 0;
+uint8_t trv_count = 0;
+uint8_t window_sensor_count = 0;
 bool network_open = false;
 static uint8_t last_config_tsn = 0; // tracking the last transaction sequence number for config report command
 static bool found_window_sensor = false;
 static bool found_trv = false;
 extern QueueHandle_t ui_event_queue;
 
-static bool device_exists(uint16_t short_addr)
-{
-    int64_t now = esp_timer_get_time() / 1000;
 
-    for (uint8_t i = 0; i < stored_device_count; i++)
-    {
-        if (stored_devices[i].short_addr == short_addr)
-        {
-            // Check if device was seen recently
-            if ((now - stored_devices[i].last_seen) > REJOIN_THRESHOLD_MS)
-            {
-                ESP_LOGI(TAG, "Device 0x%04x expired, treating as new join", short_addr);
-                return false;
-            }
-            return true;
-        }
-    }
-    return false;
-}
 
-esp_err_t save_device_to_nvs(zigbee_device_t *device)
-{
-    static int64_t last_save = 0;
-    int64_t now = esp_timer_get_time() / 1000; // Convert to ms
 
-    // First check if device already exists
-    if (device_exists(device->short_addr))
-    {
-        // Update last seen time for existing device
-        for (uint8_t i = 0; i < stored_device_count; i++)
-        {
-            if (stored_devices[i].short_addr == device->short_addr)
-            {
-                stored_devices[i].last_seen = now;
-                ESP_LOGI(TAG, "Updated last seen time for device 0x%04x", device->short_addr);
-                break;
-            }
-        }
-        return ESP_OK;
-    }
 
-    // Prevent rapid successive writes to NVS
-    if ((now - last_save) < NVS_COMMIT_TIMEOUT_MS)
-    {
-        ESP_LOGW(TAG, "Too soon to save to NVS, skipping");
-        return ESP_OK;
-    }
 
-    if (stored_device_count >= (MAX_TRV_DEVICES + MAX_WINDOW_SENSORS))
-    {
-        ESP_LOGE(TAG, "Maximum device limit reached");
-        return ESP_ERR_NO_MEM;
-    }
 
-    nvs_handle_t handle;
-    esp_err_t err = nvs_open(NVS_NAMESPACE, NVS_READWRITE, &handle);
-    if (err != ESP_OK)
-    {
-        ESP_LOGE(TAG, "Error opening NVS handle: %s", esp_err_to_name(err));
-        return err;
-    }
 
-    // Save new device count
-    err = nvs_set_u8(handle, NVS_KEY_DEVICE_COUNT, stored_device_count + 1);
-    if (err != ESP_OK)
-    {
-        ESP_LOGE(TAG, "Error saving device count: %s", esp_err_to_name(err));
-        nvs_close(handle);
-        return err;
-    }
 
-    // Create unique key for this device
-    char key[16];
-    snprintf(key, sizeof(key), "%s%d", NVS_KEY_DEVICE_BASE, stored_device_count);
 
-    // Save device data
-    err = nvs_set_blob(handle, key, device, sizeof(zigbee_device_t));
-    if (err != ESP_OK)
-    {
-        ESP_LOGE(TAG, "Error saving device data: %s", esp_err_to_name(err));
-        nvs_close(handle);
-        return err;
-    }
-
-    err = nvs_commit(handle);
-    nvs_close(handle);
-
-    if (err == ESP_OK)
-    {
-        device->last_seen = now;
-        stored_devices[stored_device_count] = *device;
-        stored_device_count++;
-        last_save = now;
-        ESP_LOGI(TAG, "Device saved successfully: %s", device->name);
-    }
-
-    return err;
-}
-
-esp_err_t save_devices_to_nvs(void)
-{
-    nvs_handle_t handle;
-    esp_err_t err;
-
-    err = nvs_open(NVS_NAMESPACE, NVS_READWRITE, &handle);
-    if (err != ESP_OK)
-        return err;
-
-    // Save device count
-    err = nvs_set_u8(handle, NVS_KEY_DEVICE_COUNT, stored_device_count);
-    if (err != ESP_OK)
-    {
-        nvs_close(handle);
-        return err;
-    }
-
-    // Save each device
-    for (uint8_t i = 0; i < stored_device_count; i++)
-    {
-        char key[16];
-        snprintf(key, sizeof(key), "%s%d", NVS_KEY_DEVICE_BASE, i);
-        err = nvs_set_blob(handle, key, &stored_devices[i], sizeof(zigbee_device_t));
-        if (err != ESP_OK)
-        {
-            nvs_close(handle);
-            return err;
-        }
-    }
-
-    err = nvs_commit(handle);
-    nvs_close(handle);
-    return err;
-}
-
-esp_err_t clear_all_nvs(void)
-{
-    // Clear default NVS partition
-    nvs_flash_erase();
-    nvs_flash_init();
-
-    // Clear Zigbee storage partition
-    const esp_partition_t *zb_partition = esp_partition_find_first(
-        ESP_PARTITION_TYPE_DATA, ESP_PARTITION_SUBTYPE_DATA_NVS, "zb_storage");
-    if (zb_partition)
-    {
-        esp_partition_erase_range(zb_partition, 0, zb_partition->size);
-    }
-
-    // Clear Zigbee factory partition
-    const esp_partition_t *zb_fct_partition = esp_partition_find_first(
-        ESP_PARTITION_TYPE_DATA, ESP_PARTITION_SUBTYPE_DATA_NVS, "zb_fct");
-    if (zb_fct_partition)
-    {
-        esp_partition_erase_range(zb_fct_partition, 0, zb_fct_partition->size);
-    }
-    trv_count = 0;
-    window_sensor_count = 0;
-    stored_device_count = 0;
-    return ESP_OK;
-}
-
-bool nvs_check_for_paired_devices(void)
-{
-    nvs_handle_t handle;
-    esp_err_t err = nvs_open(NVS_NAMESPACE, NVS_READONLY, &handle);
-    if (err != ESP_OK)
-    {
-        return false;
-    }
-
-    uint8_t count = 0;
-    err = nvs_get_u8(handle, NVS_KEY_DEVICE_COUNT, &count);
-    nvs_close(handle);
-
-    return (err == ESP_OK && count > 0);
-}
-
-esp_err_t load_devices_from_nvs(void)
-{
-    nvs_handle_t handle;
-    esp_err_t err;
-
-    err = nvs_open(NVS_NAMESPACE, NVS_READONLY, &handle);
-    if (err != ESP_OK)
-        return err;
-
-    // Load device count
-    err = nvs_get_u8(handle, NVS_KEY_DEVICE_COUNT, &stored_device_count);
-    if (err != ESP_OK)
-    {
-        stored_device_count = 0;
-        nvs_close(handle);
-        return err;
-    }
-
-    // Load each device
-    for (uint8_t i = 0; i < stored_device_count; i++)
-    {
-        char key[16];
-        snprintf(key, sizeof(key), "%s%d", NVS_KEY_DEVICE_BASE, i);
-        size_t size = sizeof(zigbee_device_t);
-        err = nvs_get_blob(handle, key, &stored_devices[i], &size);
-        if (err != ESP_OK)
-        {
-            ESP_LOGW(TAG, "Failed to load device %d", i);
-            continue;
-        }
-        ESP_LOGI(TAG, "Loaded device: %s (0x%04x)",
-                 stored_devices[i].name, stored_devices[i].short_addr);
-    }
-
-    nvs_close(handle);
-    return ESP_OK;
-}
 
 esp_err_t open_network(uint16_t duration)
 {
@@ -488,41 +280,7 @@ static void bind_window_sensor_cb(esp_zb_zdp_status_t zdo_status, void *user_ctx
     {
         ESP_LOGI(TAG, "Window sensor bound successfully");
 
-        // Configure reporting command
-        // First, write the CIE address (identify this coordinator as the CIE)
-        //     esp_zb_ieee_addr_t coordinator_addr;
-
-        //     // Get the coordinator's long address
-        //     esp_zb_get_long_address(coordinator_addr);
-        //     ESP_LOGI(TAG, "Coordinator address: 0x%02x%02x%02x%02x%02x%02x%02x%02x",
-        //              coordinator_addr[7], coordinator_addr[6], coordinator_addr[5], coordinator_addr[4],
-        //              coordinator_addr[3], coordinator_addr[2], coordinator_addr[1], coordinator_addr[0]);
-
-        //    // Create a static attribute structure to ensure memory validity
-        //     static esp_zb_zcl_attribute_t attr = {
-        //         .id = ESP_ZB_ZCL_ATTR_IAS_ZONE_IAS_CIE_ADDRESS_ID,
-        //         .data.type = ESP_ZB_ZCL_ATTR_TYPE_IEEE_ADDR,
-        //         .data.size = sizeof(esp_zb_ieee_addr_t),
-        //     };
-        //     // Set the value pointer to our coordinator address
-        //     attr.data.value = coordinator_addr;
-
-        //     esp_zb_zcl_write_attr_cmd_t write_cmd = {
-        //         .zcl_basic_cmd = {
-        //             .dst_addr_u.addr_short = bind_req->req_dst_addr,
-        //             .dst_endpoint = bind_req->dst_endp,
-        //             .src_endpoint = bind_req->src_endp,
-        //         },
-        //         .address_mode = ESP_ZB_APS_ADDR_MODE_16_ENDP_PRESENT,
-        //         .clusterID = ESP_ZB_ZCL_CLUSTER_ID_IAS_ZONE,
-        //         .direction = ESP_ZB_ZCL_CMD_DIRECTION_TO_SRV,
-        //         .attr_number = 1,
-        //         .attr_field = &attr
-        //     };
-        //    esp_err_t err = esp_zb_zcl_write_attr_cmd_req(&write_cmd);
-        //     if (err != ESP_OK) {
-        //         ESP_LOGE(TAG, "Failed to write CIE address: %s", esp_err_to_name(err));
-        //     }
+       
 
         read_window_sensor_status(stored_devices[window_sensor_count - 1].short_addr,
                                   stored_devices[window_sensor_count - 1].endpoint);
@@ -715,7 +473,7 @@ void zigbee_signal_handler(esp_zb_app_signal_t *signal_struct)
                 ESP_LOGI(TAG, "No paired devices found, opening network...");
                 open_network(180); // Open for 3 minutes
             }
-            else
+            else //no paired devices found
             {
                 ui_event_t load_event = {
                     .target_screen = SCREEN_BOOT,
@@ -737,17 +495,18 @@ void zigbee_signal_handler(esp_zb_app_signal_t *signal_struct)
                         .message = "Failed to load devices from NVS"};
                     xQueueSend(ui_event_queue, &failed_event, 0);
                     ESP_LOGE(TAG, "Failed to load devices from NVS");
+
+                    ui_event_t reopen_event = {
+                        .target_screen = SCREEN_BOOT,
+                        .message = "Network open, add devices...then short press button to close network"};
+                    vTaskDelay(pdMS_TO_TICKS(1500)); // Give time for the message to be displayed
+                    xQueueSend(ui_event_queue, &reopen_event, 0);
+                    ESP_LOGI(TAG, "Network open, add devices...");
+                    open_network(180); // Open for 3 minutes
                 }
-                ui_event_t reopen_event = {
-                    .target_screen = SCREEN_BOOT,
-                    .message = "Network open, add devices...then short press button to close network"};
-                vTaskDelay(pdMS_TO_TICKS(1500)); // Give time for the message to be displayed
-                xQueueSend(ui_event_queue, &reopen_event, 0);
-                ESP_LOGI(TAG, "Network open, add devices...");
-                open_network(180); // Open for 3 minutes
             }
+            break;
         }
-        break;
     }
 
     case ESP_ZB_NWK_SIGNAL_PERMIT_JOIN_STATUS:
@@ -806,6 +565,7 @@ void zigbee_signal_handler(esp_zb_app_signal_t *signal_struct)
 
     case ESP_ZB_ZDO_SIGNAL_DEVICE_ANNCE:
     {
+        ESP_LOGI("SIGNAL HANDLER Device annce", "Device announcement received");
         dev_annce_params = (esp_zb_zdo_signal_device_annce_params_t *)esp_zb_app_signal_get_params(p_sg_p);
         uint16_t new_addr = dev_annce_params->device_short_addr;
 
@@ -904,15 +664,33 @@ void zigbee_signal_handler(esp_zb_app_signal_t *signal_struct)
 
         esp_zb_zdo_signal_device_update_params_t *update_params =
             (esp_zb_zdo_signal_device_update_params_t *)esp_zb_app_signal_get_params(p_sg_p);
-        ESP_LOGI("SIGNAL HANDLER", "Device update notification received from %d",get_device_name( update_params->short_addr));
-        // ESP_LOGI(TAG, "Device short address: 0x%04x", update_params->short_addr);
-        // ESP_LOGI(TAG, "Device long address: 0x%02x%02x%02x%02x%02x%02x%02x%02x",
-        //          update_params->long_addr[7], update_params->long_addr[6], update_params->long_addr[5],
-        //          update_params->long_addr[4], update_params->long_addr[3], update_params->long_addr[2],
-        //          update_params->long_addr[1], update_params->long_addr[0]);
-        // ESP_LOGI(TAG, "Device status: %d", update_params->status);
-        // ESP_LOGI(TAG, "Device trust centre action: %d", update_params->tc_action);
-        // ESP_LOGI(TAG, "Device parent short: %d", update_params->parent_short);
+
+        ESP_LOGI("SIGNAL HANDLER - device update", "Device update notification received from %s",get_device_name( update_params->short_addr));
+        char status_message[64];
+        uint16_t status=update_params->status;
+        if(status == ESP_ZB_ZDO_STANDARD_DEV_SECURED_REJOIN){
+            sprintf(status_message, "Device %s rejoined network ",get_device_name( update_params->short_addr));
+        } 
+        else if(status == ESP_ZB_ZDO_STANDARD_DEV_UNSECURED_JOIN){
+            sprintf(status_message, "Device %s rejoined unsecured ",get_device_name( update_params->short_addr));
+        } 
+        else if(status == ESP_ZB_ZDO_STANDARD_DEV_LEFT){
+            sprintf(status_message, "Device %s left network ",get_device_name( update_params->short_addr));
+        } 
+        else if(status == ESP_ZB_ZDO_STANDARD_DEV_TC_REJOIN){
+            sprintf(status_message, "Device %s rejoined as TrustCentre ",get_device_name( update_params->short_addr));
+        } 
+        else {
+            sprintf(status_message, "Device %s unknown status %x",get_device_name( update_params->short_addr),status);
+        }
+
+        ESP_LOGI("SIGNAL HANDLER-device update", "%s", status_message);
+          ui_event_t event = {
+                    .target_screen = SCREEN_BOOT,
+                    .message = ""};
+                strncpy(event.message, status_message, sizeof(event.message) - 1);
+                xQueueSend(ui_event_queue, &event, 0);
+        
         break;
 
     case ESP_ZB_NLME_STATUS_INDICATION: // 0x32
@@ -997,34 +775,3 @@ void zigbee_signal_handler(esp_zb_app_signal_t *signal_struct)
     }
 }
 
-void display_network_key(void)
-{
-    uint8_t network_key[16];
-    esp_err_t status = esp_zb_secur_primary_network_key_get(network_key);
-
-    if (status == ESP_OK)
-    {
-        ESP_LOGI(TAG, "Zigbee Network Key: ");
-        for (int i = 0; i < 16; i++)
-        {
-            printf("%02x", network_key[i]);
-            if (i < 15)
-                printf(":");
-        }
-        printf("\n");
-    }
-    else
-    {
-        ESP_LOGW(TAG, "Failed to get network key, error: %s", esp_err_to_name(status));
-        ESP_LOGW(TAG, "Note: Network key can only be obtained after the device has joined the network");
-    }
-}
-
-void ui_display_message(const char *message)
-{
-    ui_event_t event = {
-        .target_screen = SCREEN_BOOT,
-        .message = ""};
-    strncpy(event.message, message, sizeof(event.message) - 1);
-    xQueueSend(ui_event_queue, &event, 0);
-}

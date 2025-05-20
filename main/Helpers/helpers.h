@@ -12,3 +12,6 @@ void show_stored_devices(void);
 char* get_device_name(uint16_t address);
 void turn_trvs_off(void);
 void turn_trvs_on(void);
+void display_network_key(void);
+void ui_display_message(const char *message);
+bool device_exists(uint16_t short_addr);

@@ -13,6 +13,7 @@ idf_component_register(
     "Sensors/sensors.c"
      "Buttons/button.c"
      "Helpers/helpers.c"
+     "NVS/nvs_functions.c"
     INCLUDE_DIRS 
     "./LCD_Driver/Vernon_ST7789T" 
     "./LCD_Driver" 
@@ -22,6 +23,7 @@ idf_component_register(
     "./Sensors"
     "./Buttons"
     "./Helpers"
+    "./NVS"
     "." 
   
    

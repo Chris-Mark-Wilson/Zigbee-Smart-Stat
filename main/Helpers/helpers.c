@@ -1,9 +1,10 @@
 #include "helpers.h"
 #include "Zigbee/zigbee.h"
-
+#include "ui_events.h"
 #include "esp_zigbee_core.h"
+#include "esp_log.h"
 
-
+#define REJOIN_THRESHOLD_MS 5000
 
 void show_stored_devices(void)
 {
@@ -88,4 +89,55 @@ void turn_trvs_on(void)
             esp_zb_zcl_write_attr_cmd_req(&mode_cmd);
         }
     }
+}
+void display_network_key(void)
+{
+    uint8_t network_key[16];
+    esp_err_t status = esp_zb_secur_primary_network_key_get(network_key);
+
+    if (status == ESP_OK)
+    {
+        ESP_LOGI("Display netwrok key helper", "Zigbee Network Key: ");
+        for (int i = 0; i < 16; i++)
+        {
+            printf("%02x", network_key[i]);
+            if (i < 15)
+                printf(":");
+        }
+        printf("\n");
+    }
+    else
+    {
+        ESP_LOGW("Display netwrok key helper", "Failed to get network key, error: %s", esp_err_to_name(status));
+        ESP_LOGW("Display network key helper", "Note: Network key can only be obtained after the device has joined the network");
+    }
+}
+
+void ui_display_message(const char *message)
+{
+    ui_event_t event = {
+        .target_screen = SCREEN_BOOT,
+        .message = ""};
+    strncpy(event.message, message, sizeof(event.message) - 1);
+    xQueueSend(ui_event_queue, &event, 0);
+}
+
+bool device_exists(uint16_t short_addr)
+{
+    int64_t now = esp_timer_get_time() / 1000;
+
+    for (uint8_t i = 0; i < stored_device_count; i++)
+    {
+        if (stored_devices[i].short_addr == short_addr)
+        {
+            // Check if device was seen recently
+            if ((now - stored_devices[i].last_seen) > REJOIN_THRESHOLD_MS)
+            {
+                ESP_LOGI("device_exits", "Device 0x%04x expired, treating as new join", short_addr);
+                return false;
+            }
+            return true;
+        }
+    }
+    return false;
 }

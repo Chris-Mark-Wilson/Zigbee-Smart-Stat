@@ -4,6 +4,7 @@
 #include "freertos/task.h"
 #include "freertos/queue.h"
 #include "esp_timer.h"
+#include "helpers.h"
 
 static const char *TAG = "BUTTON";
 static button_callback_t button_callback = NULL;
@@ -120,4 +121,73 @@ bool button_is_pressed(void)
 void button_register_callback(button_callback_t callback)
 {
     button_callback = callback;
+}
+// Callback function for button press
+ void button_pressed_cb(button_event_t event)
+{
+
+    switch (event)
+    {
+    case BUTTON_PRESSED:
+    {
+        ESP_LOGI(TAG, "Button pressed - waiting for release");
+        // address of the window sensor and endpoint
+
+        uint16_t addr = stored_devices[0].short_addr;  // Replace with actual address
+        uint8_t endpoint = stored_devices[0].endpoint; // Replace with actual endpoint
+        read_window_sensor_status(addr, endpoint);
+
+        break;
+    }
+
+    case BUTTON_RELEASED:
+    {
+        if (current_screen == SCREEN_BOOT && network_open)
+        {
+            ESP_LOGI(TAG, "Closing network on button press");
+            close_network();
+            ui_switch_screen(SCREEN_MAIN);
+        }
+        else if (current_screen == SCREEN_MAIN)
+        {
+            if (stored_device_count > 0)
+            { show_stored_devices();
+                // Toggle between min and max temperature and corresponding mode
+                g_trv_state = !g_trv_state;
+                g_target_temp = g_trv_state ? g_max_temp : g_min_temp;
+                if (g_trv_state)
+                {
+                    turn_trvs_on();
+                }
+                else
+                {
+                    turn_trvs_off();
+                }
+
+                // // Also display the network key for debugging
+                display_network_key();
+            }
+            else
+            {
+                ESP_LOGW(TAG, "No devices stored - cannot send commands");
+                // Display network key even if no devices are paired
+                display_network_key();
+            }
+        }
+        break;
+    }
+    case BUTTON_LONG_PRESS:
+    {
+        ESP_LOGI(TAG, "Long press detected - leaving network and clearing NVS");
+        esp_zb_zdo_mgmt_leave_req_param_t leave_req = {
+            .dst_nwk_addr = 0x0000,
+            .rejoin = 0,
+            .remove_children = 1};
+        esp_zb_zdo_device_leave_req(&leave_req, NULL, NULL);
+        vTaskDelay(pdMS_TO_TICKS(1000));
+        clear_all_nvs();
+        esp_restart();
+        break;
+    }
+    }
 }
