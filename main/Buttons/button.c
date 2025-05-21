@@ -5,8 +5,10 @@
 #include "freertos/queue.h"
 #include "esp_timer.h"
 #include "helpers.h"
+#include "zigbee.h"
+#include "ui_events.h"
 
-static const char *TAG = "BUTTON";
+static const char *TAG = "BUTTON ";
 static button_callback_t button_callback = NULL;
 static bool is_isr_installed = false;
 
@@ -110,20 +112,14 @@ bool button_is_pressed(void)
 {
     return (gpio_get_level(NETWORK_CONTROL_BTN_PIN) == 0);
 }
-//this function is in main.c
-// // Callback function for button press
-// static void button_pressed_cb(void)
-// {
-//     ESP_LOGI(TAG, "Button pressed!");
-//     // We'll add network control logic here later
-// }
+
 
 void button_register_callback(button_callback_t callback)
 {
     button_callback = callback;
 }
 // Callback function for button press
- void button_pressed_cb(button_event_t event)
+void button_pressed_cb(button_event_t event)
 {
 
     switch (event)
@@ -151,7 +147,8 @@ void button_register_callback(button_callback_t callback)
         else if (current_screen == SCREEN_MAIN)
         {
             if (stored_device_count > 0)
-            { show_stored_devices();
+            {
+                show_stored_devices();
                 // Toggle between min and max temperature and corresponding mode
                 g_trv_state = !g_trv_state;
                 g_target_temp = g_trv_state ? g_max_temp : g_min_temp;
@@ -178,15 +175,22 @@ void button_register_callback(button_callback_t callback)
     }
     case BUTTON_LONG_PRESS:
     {
-        ESP_LOGI(TAG, "Long press detected - leaving network and clearing NVS");
-        esp_zb_zdo_mgmt_leave_req_param_t leave_req = {
-            .dst_nwk_addr = 0x0000,
-            .rejoin = 0,
-            .remove_children = 1};
-        esp_zb_zdo_device_leave_req(&leave_req, NULL, NULL);
+        ESP_LOGI(TAG, "Long press detected - sending leave request to all devices");
+
+        
+   ui_event_t ui_event = {
+            .target_screen = current_screen,
+            .message = "Resetting device..."};
+        xQueueSend(ui_event_queue, &ui_event, 0);
         vTaskDelay(pdMS_TO_TICKS(1000));
-        clear_all_nvs();
-        esp_restart();
+
+        ESP_LOGI(TAG, "Unpairing all devices");
+        strcpy(ui_event.message , "Unpairing devices...");
+        xQueueSend(ui_event_queue, &ui_event, 0);
+        reset_device();
+        vTaskDelay(pdMS_TO_TICKS(1000));
+
+    
         break;
     }
     }

@@ -44,9 +44,16 @@
 /* End Zigbee configuration*/
 
 // Define constants
-#define MAX_DEVICE_NAME_LENGTH 32
-#define MAX_TRV_DEVICES 2
-#define MAX_WINDOW_SENSORS 3
+#define MAX_DEVICE_NAME_LENGTH  32
+#define MAX_TRV_DEVICES         2
+#define MAX_WINDOW_SENSORS      3
+#define LONG_DELAY              pdMS_TO_TICKS(3000)
+#define SHORT_DELAY             pdMS_TO_TICKS(1000)
+#define MAX_UNPAIR_ATTEMPTS     3
+#define MAX_TRV_DEVICES         2
+#define MAX_WINDOW_SENSORS      3
+#define MAX_DEVICE_NAME_LENGTH  32
+#define PAIRING_MODE_UI_MESSAGE "Pairing Mode: ON \nPress button when finished"
 
 // Device type enumeration
 typedef enum {
@@ -57,11 +64,13 @@ typedef enum {
 
 // Device structure definition
 typedef struct {
+    esp_zb_ieee_addr_t ieee_addr; // IEEE address of the device
     device_type_t type;
     uint16_t short_addr;
     uint8_t endpoint;
     char name[MAX_DEVICE_NAME_LENGTH];
     int64_t last_seen;  // Timestamp for device tracking
+    uint8_t unpair_attempts;
 } zigbee_device_t;
 
 
@@ -87,5 +96,13 @@ esp_err_t close_network(void);
 void display_network_key(void);
 
 void ui_display_message(const char *message);
+
+void reset_device(void);
+void unpair_device(uint16_t short_addr);
+
+void (reset_device_cb)(esp_zb_zdp_status_t zdo_status, void *user_ctx);
+void restart(void);
+
+zigbee_device_t *get_device_by_short_addr(uint16_t short_addr);
 
 #endif // ZIGBEE_H
