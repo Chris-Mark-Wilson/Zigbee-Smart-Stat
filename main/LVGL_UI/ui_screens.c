@@ -1,5 +1,6 @@
 #include "ui_screens.h"
 #include "esp_log.h"
+#include "Zigbee/zigbee.h"
 
 
 LV_IMG_DECLARE(presence_active);
@@ -12,12 +13,37 @@ screen_id_t current_screen = SCREEN_BOOT;
 float g_current_range = 0.0f;     // Current detected range in meters
 
 
+
+
 static void create_boot_screen(void) {
     lv_obj_t *screen = lv_obj_create(NULL);
     g_screens[SCREEN_BOOT].screen = screen;
     
-    // Create full screen label
-    g_screens[SCREEN_BOOT].boot.status_label = lv_label_create(screen);
+    // Create header container (20% of screen height)
+    lv_obj_t *header = lv_obj_create(screen);
+    lv_obj_remove_style_all(header);
+    lv_obj_set_size(header, LV_PCT(100), LV_PCT(20));
+    lv_obj_align(header, LV_ALIGN_TOP_MID, 0, 0);
+    
+
+        // Add header label and store reference
+    g_screens[SCREEN_BOOT].boot.header_label = lv_label_create(header);
+    lv_obj_set_style_text_font(g_screens[SCREEN_BOOT].boot.header_label, 
+                            &lv_font_montserrat_24, 0);
+    lv_obj_set_style_text_align(g_screens[SCREEN_BOOT].boot.header_label, 
+                            LV_TEXT_ALIGN_CENTER, 0);
+    lv_label_set_text(g_screens[SCREEN_BOOT].boot.header_label, "Paired: 0");
+    lv_obj_center(g_screens[SCREEN_BOOT].boot.header_label);
+    
+    // Create container for status label (remaining 80% of screen)
+    lv_obj_t *content = lv_obj_create(screen);
+    lv_obj_remove_style_all(content);
+    lv_obj_set_size(content, LV_PCT(100), LV_PCT(80));
+    lv_obj_align(content, LV_ALIGN_BOTTOM_MID, 0, 0);
+
+    
+    // Create status label inside content container
+    g_screens[SCREEN_BOOT].boot.status_label = lv_label_create(content);
     lv_obj_set_align(g_screens[SCREEN_BOOT].boot.status_label, LV_ALIGN_CENTER);
     lv_obj_set_width(g_screens[SCREEN_BOOT].boot.status_label, LV_PCT(90));
     lv_obj_set_style_text_font(g_screens[SCREEN_BOOT].boot.status_label, 
@@ -179,6 +205,8 @@ void ui_update_settings(uint8_t high_temp, uint8_t low_temp, uint8_t presence_ra
     lv_label_set_text(g_screens[SCREEN_SETTINGS].settings.low_temp_label, low_temp_str);
     lv_label_set_text(g_screens[SCREEN_SETTINGS].settings.range_label, range_str);
 }
-void ui_update_boot_status(const char *status) {
+void ui_update_boot_status(const char *status,const char *header) {
+
+    lv_label_set_text(g_screens[SCREEN_BOOT].boot.header_label, header);
     lv_label_set_text(g_screens[SCREEN_BOOT].boot.status_label, status);
 }

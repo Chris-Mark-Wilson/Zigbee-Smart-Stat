@@ -58,43 +58,43 @@ void esp_zb_app_signal_handler(esp_zb_app_signal_t *signal_struct)
 
 
 // handle window sensor state change
-static esp_err_t zb_attribute_handler(const esp_zb_zcl_set_attr_value_message_t *message)
-{
-    static const char *TAG = "ZB_ATTR_HANDLER";
-    ESP_LOGI(TAG, "Attribute handler called with message: %p", message);
-    esp_err_t ret = ESP_OK;
+// static esp_err_t zb_attribute_handler(const esp_zb_zcl_set_attr_value_message_t *message)
+// {
+//     static const char *TAG = "ZB_ATTR_HANDLER";
+//     ESP_LOGI(TAG, "Attribute handler called with message: %p", message);
+//     esp_err_t ret = ESP_OK;
 
-    if (!message)
-    {
-        ESP_LOGE(TAG, "Empty message received");
-        return ESP_FAIL;
-    }
+//     if (!message)
+//     {
+//         ESP_LOGE(TAG, "Empty message received");
+//         return ESP_FAIL;
+//     }
 
-    ESP_LOGI(TAG, "Attribute details:");
-    ESP_LOGI(TAG, "  Endpoint: %d", message->info.dst_endpoint);
-    ESP_LOGI(TAG, "  Cluster: 0x%04x", message->info.cluster);
-    ESP_LOGI(TAG, "  Attribute ID: 0x%04x", message->attribute.id);
-    ESP_LOGI(TAG, "  Status: 0x%02x", message->info.status);
+//     ESP_LOGI(TAG, "Attribute details:");
+//     ESP_LOGI(TAG, "  Endpoint: %d", message->info.dst_endpoint);
+//     ESP_LOGI(TAG, "  Cluster: 0x%04x", message->info.cluster);
+//     ESP_LOGI(TAG, "  Attribute ID: 0x%04x", message->attribute.id);
+//     ESP_LOGI(TAG, "  Status: 0x%02x", message->info.status);
 
-    // Handle any endpoint (not just endpoint 1)
-    if (message->info.cluster == ESP_ZB_ZCL_CLUSTER_ID_IAS_ZONE)
-    {
-        if (message->attribute.id == ESP_ZB_ZCL_ATTR_IAS_ZONE_ZONESTATUS_ID)
-        {
-            uint16_t zone_status = *(uint16_t *)message->attribute.data.value;
-            ESP_LOGI(TAG, "  Zone status: 0x%04x", zone_status);
-            g_is_window_open = (zone_status & 0x0001);
+//     // Handle any endpoint (not just endpoint 1)
+//     if (message->info.cluster == ESP_ZB_ZCL_CLUSTER_ID_IAS_ZONE)
+//     {
+//         if (message->attribute.id == ESP_ZB_ZCL_ATTR_IAS_ZONE_ZONESTATUS_ID)
+//         {
+//             uint16_t zone_status = *(uint16_t *)message->attribute.data.value;
+//             ESP_LOGI(TAG, "  Zone status: 0x%04x", zone_status);
+//             g_is_window_open = (zone_status & 0x0001);
 
-            // Trigger UI update
-            ui_event_t event = {
-                .target_screen = SCREEN_MAIN,
-                .message = ""};
-            xQueueSend(ui_event_queue, &event, 0);
-        }
-    }
+//             // Trigger UI update
+//             ui_event_t event = {
+//                 .target_screen = SCREEN_MAIN,
+//                 .message = ""};
+//             xQueueSend(ui_event_queue, &event, 0);
+//         }
+//     }
 
-    return ret;
-}
+//     return ret;
+// }
 static esp_err_t zb_action_handler(esp_zb_core_action_callback_id_t callback_id, const void *message)
 {
     static const char *TAG = "ZB_ACTION_HANDLER";
@@ -107,7 +107,7 @@ static esp_err_t zb_action_handler(esp_zb_core_action_callback_id_t callback_id,
     {
     case ESP_ZB_CORE_SET_ATTR_VALUE_CB_ID:
         ESP_LOGI(TAG, "SET_ATTR_VALUE callback received");
-        ret = zb_attribute_handler((esp_zb_zcl_set_attr_value_message_t *)message);
+        // ret = zb_attribute_handler((esp_zb_zcl_set_attr_value_message_t *)message);
         break;
 
     case ESP_ZB_CORE_CMD_READ_ATTR_RESP_CB_ID: // 0x1000
@@ -504,7 +504,11 @@ static void ui_update_task(void *pvParameters)
             switch (event.target_screen)
             {
             case SCREEN_BOOT:
-                ui_update_boot_status(event.message);
+            char devices_found[20];
+                snprintf(devices_found, sizeof(devices_found), "Paired: %d", stored_device_count);
+
+                ui_update_boot_status(event.message,devices_found);
+                                      
                 break;
             case SCREEN_MAIN:
                 ui_update_main_screen(
