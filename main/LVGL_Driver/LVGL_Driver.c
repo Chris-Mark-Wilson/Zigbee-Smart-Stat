@@ -1,5 +1,5 @@
 #include "LVGL_Driver.h"
-
+#include "i2c_bsp.h"  
 static const char *TAG_LVGL = "WS_LVGL";
 
 static lv_color_t buf1[ LVGL_BUF_LEN ];
@@ -26,14 +26,20 @@ bool example_notify_lvgl_flush_ready(esp_lcd_panel_io_handle_t panel_io, esp_lcd
 
 void example_lvgl_flush_cb(lv_disp_drv_t *drv, const lv_area_t *area, lv_color_t *color_map)
 {
-    // ESP_LOGI("LVGL", "Flush callback triggered");
-    esp_lcd_panel_handle_t panel_handle = (esp_lcd_panel_handle_t) drv->user_data;
-    int offsetx1 = area->x1;
-    int offsetx2 = area->x2;
-    int offsety1 = area->y1;
-    int offsety2 = area->y2;
-    // copy a buffer's content to a specific area of the display
-    esp_lcd_panel_draw_bitmap(panel_handle, offsetx1 + Offset_X, offsety1 + Offset_Y, offsetx2 + Offset_X + 1, offsety2 + Offset_Y + 1, color_map);
+  esp_lcd_panel_handle_t panel_handle = (esp_lcd_panel_handle_t) drv->user_data;
+#if (Direction == Normal) 
+  int offsetx1 = area->x1 + 35;
+  int offsetx2 = area->x2 + 35;
+  int offsety1 = area->y1;
+  int offsety2 = area->y2;
+#elif (Direction == Rotate)
+  int offsetx1 = area->x1;
+  int offsetx2 = area->x2;
+  int offsety1 = area->y1 + 35;
+  int offsety2 = area->y2 + 35;
+#endif
+  // copy a buffer's content to a specific area of the display
+  esp_lcd_panel_draw_bitmap(panel_handle, offsetx1, offsety1, offsetx2 + 1, offsety2 + 1, color_map);
 }
 
 /* Rotate display and touch, when rotated screen in LVGL. Called when driver parameters are updated. */
@@ -69,6 +75,92 @@ void example_lvgl_port_update_callback(lv_disp_drv_t *drv)
 lv_disp_t *disp;
 void LVGL_Init(void)
 {
+    ////////////////////////////////////////////////////////////////
+     static lv_disp_draw_buf_t disp_buf; // contains internal graphic buffer(s) called draw buffer(s)
+  static lv_disp_drv_t disp_drv;      // contains callback functions
+  spi_bus_config_t buscfg = 
+  {
+#if EXAMPLE_USE_SDCARD
+    .miso_io_num = PIN_NUM_MISO,
+#endif
+    .mosi_io_num = PIN_NUM_MOSI,
+    .sclk_io_num = PIN_NUM_CLK,
+    .quadwp_io_num = -1,
+    .quadhd_io_num = -1,
+    .max_transfer_sz =  EXAMPLE_LCD_H_RES * EXAMPLE_LCD_DMA_Line * sizeof(uint16_t), // RGB565 , 传输屏幕的1/10行的数据
+  };
+  ESP_ERROR_CHECK(spi_bus_initialize(LCD_HOST, &buscfg, SPI_DMA_CH_AUTO));
+#if EXAMPLE_USE_SDCARD
+  esp_vfs_fat_sdmmc_mount_config_t mount_config = 
+  {
+    .format_if_mount_failed = false,     // If mount fails, create partition table and format SD card
+    .max_files = 5,                     // Max number of open files
+    .allocation_unit_size = 512,         // Similar to sector size
+  };
+  sdspi_device_config_t slot_config = SDSPI_DEVICE_CONFIG_DEFAULT();
+  slot_config.gpio_cs = PIN_NUM_SDCS;
+  slot_config.host_id = LCD_HOST;
+  sdmmc_host_t host = SDSPI_HOST_DEFAULT();
+  host.slot = LCD_HOST;
+  ESP_ERROR_CHECK_WITHOUT_ABORT(esp_vfs_fat_sdspi_mount(SDlist, &host, &slot_config, &mount_config, &card)); // Mount SD card
+  if(card != NULL)
+  {
+    sdmmc_card_print_info(stdout, card); // Print card information
+    printf("Size: %.2f(GB)\n", (float)(card->csd.capacity) / 2048 / 1024); // in GB
+  }
+#endif
+#if (EXAMPLE_USE_Disp == 1)
+  esp_lcd_panel_io_handle_t io_handle = NULL;
+  esp_lcd_panel_io_spi_config_t io_config = 
+  {
+    .dc_gpio_num = PIN_NUM_DC,
+    .cs_gpio_num = PIN_NUM_CS,
+    .pclk_hz = 20 * 1000 * 1000,
+    .lcd_cmd_bits = 8,
+    .lcd_param_bits = 8,
+    .spi_mode = 0,
+    .trans_queue_depth = 10,
+    .on_color_trans_done = example_notify_lvgl_flush_ready,
+    .user_ctx = &disp_drv,
+  };
+  sh8601_vendor_config_t vendor_config = 
+  {
+    .init_cmds = lcd_init_cmds,
+    .init_cmds_size = sizeof(lcd_init_cmds) / sizeof(lcd_init_cmds[0]),
+  };
+  ESP_ERROR_CHECK(esp_lcd_new_panel_io_spi((esp_lcd_spi_bus_handle_t)LCD_HOST, &io_config, &io_handle));
+
+  esp_lcd_panel_handle_t panel_handle = NULL;
+  const esp_lcd_panel_dev_config_t panel_config = 
+  {
+    .reset_gpio_num = PIN_NUM_RST,
+    .rgb_ele_order = LCD_RGB_ELEMENT_ORDER_RGB,
+    .bits_per_pixel = 16,
+    .vendor_config = &vendor_config,
+    .data_endian = LCD_RGB_DATA_ENDIAN_BIG,
+  };
+  ESP_ERROR_CHECK(esp_lcd_new_panel_sh8601(io_handle, &panel_config, &panel_handle));
+  ESP_ERROR_CHECK(esp_lcd_panel_reset(panel_handle));
+  ESP_ERROR_CHECK(esp_lcd_panel_init(panel_handle));
+  //ESP_ERROR_CHECK(esp_lcd_panel_disp_on_off(panel_handle, true));
+  I2C_master_Init();
+#if EXAMPLE_USE_TOUCH
+  touch_Init();
+#endif
+#endif // EXAMPLE_USE_Disp
+
+    ESP_LOGI(TAG_LVGL, "Initialize LVGL draw buffers");
+    lv_disp_draw_buf_init(&disp_buf, buf1, buf2, LVGL_BUF_LEN); // Initialize LVGL draw buffers
+
+    ESP_LOGI(TAG_LVGL, "Initialize LVGL display driver");
+    lv_disp_drv_init(&disp_drv); // Create a new screen object and initialize the associated device
+    disp_drv.hor_res = EXAMPLE_LCD_H_RES; // Horizontal pixel count
+    disp_drv.ver_res = EXAMPLE_LCD_V_RES; // Vertical axis pixel count
+    disp_drv.flush_cb = example_lvgl_flush_cb; // Function : copy a buffer's content to a specific area of the display
+    disp_drv.drv_update_cb = example_lvgl_port_update_callback; // Function : Rotate display and touch, when rotated screen in LVGL. Called when driver parameters are updated.
+    disp_drv.draw_buf = &disp_buf; // LVGL will use this buffer(s) to draw the screens contents
+    disp_drv.user_data = panel_handle; // Custom display driver user data
+///////////////////////////////////////////////////////////////////////
     ESP_LOGI(TAG_LVGL, "Initialize LVGL library");
     lv_init();
     

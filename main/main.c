@@ -14,7 +14,7 @@
 // #include "ha/esp_zigbee_ha_standard.h"
 
 // lcd headers
-#include "ST7789.h"
+#include "LVGL_Driver/LVGL_Driver.h"
 
 // zigbee headers
 
@@ -553,7 +553,7 @@ void app_main(void)
     ESP_ERROR_CHECK(nvs_flash_init());
     ESP_ERROR_CHECK(esp_zb_platform_config(&config));
 
-    LCD_Init();
+    // LCD_Init();
     LVGL_Init();
     esp_err_t ret = hmmd_uart_init();
     if (ret != ESP_OK)
@@ -582,6 +582,6 @@ void app_main(void)
     xTaskCreate(lvgl_task, "lvgl_handler", 4096, NULL, 6, NULL);
     xTaskCreate(ui_update_task, "ui_update", 4096, NULL, 5, NULL);
     xTaskCreate(zigbee_task, "Zigbee_main", 4096, NULL, 5, NULL);
-    xTaskCreate(hmmd_read_task, "HMMD_read", 2048, NULL, 4, NULL);
-    xTaskCreate(dht_sensor_task, "DHT_sensor", 2048, NULL, 4, NULL);
+    // xTaskCreate(hmmd_read_task, "HMMD_read", 2048, NULL, 4, NULL);
+    // xTaskCreate(dht_sensor_task, "DHT_sensor", 2048, NULL, 4, NULL);
 }

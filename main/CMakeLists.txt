@@ -1,8 +1,7 @@
 idf_component_register(
     SRCS 
     "main.c"
-    "LCD_Driver/Vernon_ST7789T/Vernon_ST7789T.c" 
-    "LCD_Driver/ST7789.c"
+
     "LVGL_Driver/LVGL_Driver.c"
     "LVGL_UI/assets/presence_active.c"
     "LVGL_UI/assets/presence_inactive.c"
@@ -14,9 +13,12 @@ idf_component_register(
      "Buttons/button.c"
      "Helpers/helpers.c"
      "NVS/nvs_functions.c"
+     "esp_touch/touch_bsp.c"
+    "i2c_bsp/i2c_bsp.c"
+
     INCLUDE_DIRS 
-    "./LCD_Driver/Vernon_ST7789T" 
-    "./LCD_Driver" 
+    "./i2c_bsp"
+    "./esp_touch"
     "./LVGL_Driver" 
     "./LVGL_UI" 
     "./Zigbee"
@@ -24,6 +26,7 @@ idf_component_register(
     "./Buttons"
     "./Helpers"
     "./NVS"
+   
     "." 
   
    
