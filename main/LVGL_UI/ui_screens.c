@@ -137,22 +137,129 @@ static void create_settings_screen(void) {
     lv_obj_t *screen = lv_obj_create(NULL);
     g_screens[SCREEN_SETTINGS].screen = screen;
     
-    // High temperature slider (17-21°C)
-    g_screens[SCREEN_SETTINGS].settings.high_temp_slider = lv_slider_create(screen);
-    lv_slider_set_range(g_screens[SCREEN_SETTINGS].settings.high_temp_slider, 17, 21);
+    // Create main container for settings
+    lv_obj_t *settings_container = lv_obj_create(screen);
+    lv_obj_remove_style_all(settings_container);
+    lv_obj_set_size(settings_container, LV_PCT(90), LV_PCT(70));
+    lv_obj_align(settings_container, LV_ALIGN_TOP_MID, 0, 10);
+    lv_obj_set_flex_flow(settings_container, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(settings_container, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_row(settings_container, 20, 0);  // Space between rows
+
+    // High temperature section
+    lv_obj_t *high_temp_container = lv_obj_create(settings_container);
+    lv_obj_remove_style_all(high_temp_container);
+    lv_obj_set_size(high_temp_container, LV_PCT(100), LV_SIZE_CONTENT);
+    lv_obj_set_flex_flow(high_temp_container, LV_FLEX_FLOW_COLUMN);
     
-    // Low temperature slider (13-16°C)
-    g_screens[SCREEN_SETTINGS].settings.low_temp_slider = lv_slider_create(screen);
-    lv_slider_set_range(g_screens[SCREEN_SETTINGS].settings.low_temp_slider, 13, 16);
+    // High temperature label styling
+    g_screens[SCREEN_SETTINGS].settings.high_temp_label = lv_label_create(high_temp_container);
+    lv_obj_set_style_text_font(g_screens[SCREEN_SETTINGS].settings.high_temp_label, &lv_font_montserrat_18, 0);
+    lv_obj_set_style_text_color(g_screens[SCREEN_SETTINGS].settings.high_temp_label, lv_color_make(0, 0, 0), 0);
+    lv_obj_set_style_text_opa(g_screens[SCREEN_SETTINGS].settings.high_temp_label, LV_OPA_COVER, 0);
+    lv_label_set_text(g_screens[SCREEN_SETTINGS].settings.high_temp_label, "High Temperature");
     
-    // Presence range slider (3m-7m)
-    g_screens[SCREEN_SETTINGS].settings.presence_range_slider = lv_slider_create(screen);
-    lv_slider_set_range(g_screens[SCREEN_SETTINGS].settings.presence_range_slider, 3, 7);
+    g_screens[SCREEN_SETTINGS].settings.high_temp_slider = lv_slider_create(high_temp_container);
+    lv_obj_set_width(g_screens[SCREEN_SETTINGS].settings.high_temp_slider, LV_PCT(100));
+    lv_slider_set_range(g_screens[SCREEN_SETTINGS].settings.high_temp_slider, 17, 22);
     
-    // Labels for values
-    g_screens[SCREEN_SETTINGS].settings.high_temp_label = lv_label_create(screen);
-    g_screens[SCREEN_SETTINGS].settings.low_temp_label = lv_label_create(screen);
-    g_screens[SCREEN_SETTINGS].settings.range_label = lv_label_create(screen);
+    // Low temperature section
+    lv_obj_t *low_temp_container = lv_obj_create(settings_container);
+    lv_obj_remove_style_all(low_temp_container);
+    lv_obj_set_size(low_temp_container, LV_PCT(100), LV_SIZE_CONTENT);
+    lv_obj_set_flex_flow(low_temp_container, LV_FLEX_FLOW_COLUMN);
+    
+    // Low temperature label styling
+    g_screens[SCREEN_SETTINGS].settings.low_temp_label = lv_label_create(low_temp_container);
+    lv_obj_set_style_text_font(g_screens[SCREEN_SETTINGS].settings.low_temp_label, &lv_font_montserrat_18, 0);
+    lv_obj_set_style_text_color(g_screens[SCREEN_SETTINGS].settings.low_temp_label, lv_color_make(0, 0, 0), 0);
+    lv_obj_set_style_text_opa(g_screens[SCREEN_SETTINGS].settings.low_temp_label, LV_OPA_COVER, 0);
+    lv_label_set_text(g_screens[SCREEN_SETTINGS].settings.low_temp_label, "Low Temperature");
+    
+    g_screens[SCREEN_SETTINGS].settings.low_temp_slider = lv_slider_create(low_temp_container);
+    lv_obj_set_width(g_screens[SCREEN_SETTINGS].settings.low_temp_slider, LV_PCT(100));
+    lv_slider_set_range(g_screens[SCREEN_SETTINGS].settings.low_temp_slider, 13, 20);
+    
+    // Presence range section
+    lv_obj_t *range_container = lv_obj_create(settings_container);
+    lv_obj_remove_style_all(range_container);
+    lv_obj_set_size(range_container, LV_PCT(100), LV_SIZE_CONTENT);
+    lv_obj_set_flex_flow(range_container, LV_FLEX_FLOW_COLUMN);
+    
+    // Presence range label styling
+    g_screens[SCREEN_SETTINGS].settings.range_label = lv_label_create(range_container);
+    lv_obj_set_style_text_font(g_screens[SCREEN_SETTINGS].settings.range_label, &lv_font_montserrat_18, 0);
+    lv_obj_set_style_text_color(g_screens[SCREEN_SETTINGS].settings.range_label, lv_color_make(0, 0, 0), 0);
+    lv_obj_set_style_text_opa(g_screens[SCREEN_SETTINGS].settings.range_label, LV_OPA_COVER, 0);
+    lv_label_set_text(g_screens[SCREEN_SETTINGS].settings.range_label, "Presence Range");
+    
+    g_screens[SCREEN_SETTINGS].settings.presence_range_slider = lv_slider_create(range_container);
+    lv_obj_set_width(g_screens[SCREEN_SETTINGS].settings.presence_range_slider, LV_PCT(100));
+    lv_slider_set_range(g_screens[SCREEN_SETTINGS].settings.presence_range_slider, 0, 7);
+    
+      // Channel mask section
+    lv_obj_t *channel_container = lv_obj_create(settings_container);
+    lv_obj_remove_style_all(channel_container);
+    lv_obj_set_size(channel_container, LV_PCT(100), LV_SIZE_CONTENT);
+    lv_obj_set_flex_flow(channel_container, LV_FLEX_FLOW_COLUMN);
+    
+    // Channel label styling
+    g_screens[SCREEN_SETTINGS].settings.channel_label = lv_label_create(channel_container);
+    lv_obj_set_style_text_font(g_screens[SCREEN_SETTINGS].settings.channel_label, &lv_font_montserrat_18, 0);
+    lv_obj_set_style_text_color(g_screens[SCREEN_SETTINGS].settings.channel_label, lv_color_make(0, 0, 0), 0);
+    lv_obj_set_style_text_opa(g_screens[SCREEN_SETTINGS].settings.channel_label, LV_OPA_COVER, 0);
+    lv_label_set_text(g_screens[SCREEN_SETTINGS].settings.channel_label, "Zigbee Channel");
+    
+    g_screens[SCREEN_SETTINGS].settings.channel_slider = lv_slider_create(channel_container);
+    lv_obj_set_width(g_screens[SCREEN_SETTINGS].settings.channel_slider, LV_PCT(100));
+    lv_slider_set_range(g_screens[SCREEN_SETTINGS].settings.channel_slider, 11, 25);
+
+    // Apply styles to all sliders
+    lv_obj_t * sliders[] = {
+        g_screens[SCREEN_SETTINGS].settings.high_temp_slider,
+        g_screens[SCREEN_SETTINGS].settings.low_temp_slider,
+        g_screens[SCREEN_SETTINGS].settings.presence_range_slider,
+        g_screens[SCREEN_SETTINGS].settings.channel_slider
+    };
+    
+    for(int i = 0; i < 4; i++) {
+        lv_obj_set_style_pad_top(sliders[i], 15, 0);    // Space above slider
+        lv_obj_set_style_pad_bottom(sliders[i], 15, 0); // Space below slider
+        lv_obj_add_flag(sliders[i], LV_OBJ_FLAG_ADV_HITTEST);  // Better touch handling
+    }
+
+      // Create button container at bottom
+    lv_obj_t *button_container = lv_obj_create(screen);
+    lv_obj_remove_style_all(button_container);
+    lv_obj_set_size(button_container, LV_PCT(90), LV_SIZE_CONTENT);
+    lv_obj_align(button_container, LV_ALIGN_BOTTOM_MID, 0, -10);
+    lv_obj_set_flex_flow(button_container, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(button_container, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    
+    // Create save button
+    g_screens[SCREEN_SETTINGS].settings.save_btn = lv_btn_create(button_container);
+    lv_obj_set_size(g_screens[SCREEN_SETTINGS].settings.save_btn, LV_PCT(45), 40);
+    lv_obj_set_style_bg_color(g_screens[SCREEN_SETTINGS].settings.save_btn, lv_color_make(0, 150, 0), 0);
+    
+    // Create cancel button
+    g_screens[SCREEN_SETTINGS].settings.cancel_btn = lv_btn_create(button_container);
+    lv_obj_set_size(g_screens[SCREEN_SETTINGS].settings.cancel_btn, LV_PCT(45), 40);
+    lv_obj_set_style_bg_color(g_screens[SCREEN_SETTINGS].settings.cancel_btn, lv_color_make(150, 0, 0), 0);
+    
+    // Button labels styling
+    lv_obj_t *save_label = lv_label_create(g_screens[SCREEN_SETTINGS].settings.save_btn);
+    lv_obj_set_style_text_font(save_label, &lv_font_montserrat_18, 0);
+    lv_label_set_text(save_label, "Save");
+    lv_obj_center(save_label);
+    lv_obj_set_style_text_color(save_label, lv_color_make(255, 255, 255), 0);
+    lv_obj_set_style_text_opa(save_label, LV_OPA_COVER, 0);
+
+    lv_obj_t *cancel_label = lv_label_create(g_screens[SCREEN_SETTINGS].settings.cancel_btn);
+    lv_obj_set_style_text_font(cancel_label, &lv_font_montserrat_18, 0);
+    lv_label_set_text(cancel_label, "Cancel");
+    lv_obj_center(cancel_label);
+    lv_obj_set_style_text_color(cancel_label, lv_color_make(255, 255, 255), 0);
+    lv_obj_set_style_text_opa(cancel_label, LV_OPA_COVER, 0);
 }
 
 void ui_init_screens(void) {
@@ -206,22 +313,41 @@ void ui_update_main_screen(float temp, float humidity, bool presence, bool is_wi
     lv_label_set_text(g_screens[SCREEN_MAIN].main.range_label, range_buf);
 }
 
-void ui_update_settings(uint8_t high_temp, uint8_t low_temp, uint8_t presence_range) {
+void ui_update_settings(uint8_t high_temp, uint8_t low_temp, float presence_range, uint32_t channel_mask) {
+
+     // Find which channel is set in the mask (get position of the set bit)
+    uint8_t channel = 0;
+    for(uint8_t i = 11; i <= 25; i++) {
+        if(channel_mask & (1UL << i)) {
+            channel = i;
+            break;
+        }
+    }
+    
+    // If no valid channel found, default to 11
+    if(channel < 11 || channel > 25) {
+        channel = 11;
+    }
+
     lv_slider_set_value(g_screens[SCREEN_SETTINGS].settings.high_temp_slider, high_temp, LV_ANIM_OFF);
     lv_slider_set_value(g_screens[SCREEN_SETTINGS].settings.low_temp_slider, low_temp, LV_ANIM_OFF);
-    lv_slider_set_value(g_screens[SCREEN_SETTINGS].settings.presence_range_slider, presence_range, LV_ANIM_OFF);
+    lv_slider_set_value(g_screens[SCREEN_SETTINGS].settings.presence_range_slider, presence_range/100, LV_ANIM_OFF);
+    lv_slider_set_value(g_screens[SCREEN_SETTINGS].settings.channel_slider, channel, LV_ANIM_OFF);
     
     char high_temp_str[16];
     char low_temp_str[16];
     char range_str[16];
-    
+    char channel_str[16];
+    //range limit is in centimeters, convert to meters for display
     snprintf(high_temp_str, sizeof(high_temp_str), "High: %d°C", high_temp);
     snprintf(low_temp_str, sizeof(low_temp_str), "Low: %d°C", low_temp);
-    snprintf(range_str, sizeof(range_str), "Range: %dm", presence_range);
+    snprintf(range_str, sizeof(range_str), "Range: %.1fm", presence_range/100);
+    snprintf(channel_str,sizeof(channel_str), "Channel: %d", channel);
     
     lv_label_set_text(g_screens[SCREEN_SETTINGS].settings.high_temp_label, high_temp_str);
     lv_label_set_text(g_screens[SCREEN_SETTINGS].settings.low_temp_label, low_temp_str);
     lv_label_set_text(g_screens[SCREEN_SETTINGS].settings.range_label, range_str);
+    lv_label_set_text(g_screens[SCREEN_SETTINGS].settings.channel_label, channel_str);
 }
 void ui_update_boot_status(const char *status,const char *header) {
 

@@ -35,9 +35,16 @@ typedef struct {
             lv_obj_t *high_temp_slider;
             lv_obj_t *low_temp_slider;
             lv_obj_t *presence_range_slider;
+            lv_obj_t *channel_slider;
             lv_obj_t *high_temp_label;
             lv_obj_t *low_temp_label;
             lv_obj_t *range_label;
+             lv_obj_t *channel_label;
+            lv_obj_t *save_button;
+            lv_obj_t *cancel_button;
+            lv_obj_t *settings_container; // Main container for settings
+            lv_obj_t *save_btn;
+            lv_obj_t *cancel_btn;
         } settings;
     };
 } screen_t;
@@ -49,6 +56,6 @@ void ui_init_screens(void);
 void ui_switch_screen(screen_id_t screen);
 void ui_update_boot_status(const char *status, const char *header);
 void ui_update_main_screen(float temp, float humidity, bool presence, bool window_open);
-void ui_update_settings(uint8_t high_temp, uint8_t low_temp, uint8_t presence_range);
+void ui_update_settings(uint8_t high_temp, uint8_t low_temp, float presence_range, uint32_t channel_mask);
 
 #endif

@@ -15,6 +15,7 @@ idf_component_register(
      "NVS/nvs_functions.c"
      "esp_touch/touch_bsp.c"
     "i2c_bsp/i2c_bsp.c"
+    "Settings/settings.c"
 
     INCLUDE_DIRS 
     "./i2c_bsp"
@@ -26,6 +27,7 @@ idf_component_register(
     "./Buttons"
     "./Helpers"
     "./NVS"
+    "./Settings"
    
     "." 
   
