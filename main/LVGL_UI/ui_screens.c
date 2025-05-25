@@ -34,12 +34,17 @@ static void create_boot_screen(void) {
                             LV_TEXT_ALIGN_CENTER, 0);
     lv_label_set_text(g_screens[SCREEN_BOOT].boot.header_label, "Paired: 0");
     lv_obj_center(g_screens[SCREEN_BOOT].boot.header_label);
+    lv_obj_set_style_text_color(g_screens[SCREEN_BOOT].boot.header_label, lv_color_make(0, 0, 0), 0);
+    lv_obj_set_style_text_opa(g_screens[SCREEN_BOOT].boot.header_label, LV_OPA_COVER, 0);
+    
     
     // Create container for status label (remaining 80% of screen)
     lv_obj_t *content = lv_obj_create(screen);
     lv_obj_remove_style_all(content);
     lv_obj_set_size(content, LV_PCT(100), LV_PCT(80));
     lv_obj_align(content, LV_ALIGN_BOTTOM_MID, 0, 0);
+       
+  
 
     
     // Create status label inside content container
@@ -49,6 +54,8 @@ static void create_boot_screen(void) {
     lv_obj_set_style_text_font(g_screens[SCREEN_BOOT].boot.status_label, 
         &lv_font_montserrat_24, 0);
     lv_label_set_text(g_screens[SCREEN_BOOT].boot.status_label, "Initializing...");
+    lv_obj_set_style_text_color(g_screens[SCREEN_BOOT].boot.status_label, lv_color_make(0, 0, 0), 0);
+    lv_obj_set_style_text_opa(g_screens[SCREEN_BOOT].boot.status_label, LV_OPA_COVER, 0);
 }
 
 static void create_main_screen(void) {
@@ -65,6 +72,9 @@ static void create_main_screen(void) {
     g_screens[SCREEN_MAIN].main.temp_label = lv_label_create(temp_container);
     lv_obj_set_style_text_font(g_screens[SCREEN_MAIN].main.temp_label, &lv_font_montserrat_48, 0);
     lv_obj_align(g_screens[SCREEN_MAIN].main.temp_label, LV_ALIGN_LEFT_MID, 15, 0);
+       lv_obj_set_style_text_color(g_screens[SCREEN_MAIN].main.temp_label, lv_color_make(0, 0, 0), 0);
+    lv_obj_set_style_text_opa(g_screens[SCREEN_MAIN].main.temp_label, LV_OPA_COVER, 0);   
+   
     
     // Container for decimal and unit
     lv_obj_t *temp_suffix_container = lv_obj_create(temp_container);
@@ -75,17 +85,23 @@ static void create_main_screen(void) {
     g_screens[SCREEN_MAIN].main.temp_decimal = lv_label_create(temp_suffix_container);
     lv_obj_set_style_text_font(g_screens[SCREEN_MAIN].main.temp_decimal, &lv_font_montserrat_24, 0);
     lv_obj_align(g_screens[SCREEN_MAIN].main.temp_decimal, LV_ALIGN_LEFT_MID, 0, 0);
+       lv_obj_set_style_text_color(g_screens[SCREEN_MAIN].main.temp_decimal, lv_color_make(0, 0, 0), 0);
+    lv_obj_set_style_text_opa(g_screens[SCREEN_MAIN].main.temp_decimal, LV_OPA_COVER, 0);
     
     // Units (°C)
     lv_obj_t *temp_unit = lv_label_create(temp_suffix_container);
     lv_obj_set_style_text_font(temp_unit, &lv_font_montserrat_38, 0);
     lv_label_set_text(temp_unit, "°C");
     lv_obj_align(temp_unit, LV_ALIGN_LEFT_MID, 25, -5);
+       lv_obj_set_style_text_color(temp_unit, lv_color_make(0, 0, 0), 0);
+    lv_obj_set_style_text_opa(temp_unit, LV_OPA_COVER, 0);
     
     // Humidity display (medium size)
     g_screens[SCREEN_MAIN].main.humid_label = lv_label_create(screen);
     lv_obj_set_style_text_font(g_screens[SCREEN_MAIN].main.humid_label, &lv_font_montserrat_38, 0);
     lv_obj_align(g_screens[SCREEN_MAIN].main.humid_label, LV_ALIGN_CENTER, 0, -30);
+       lv_obj_set_style_text_color(g_screens[SCREEN_MAIN].main.humid_label, lv_color_make(0, 0, 0), 0);
+    lv_obj_set_style_text_opa(g_screens[SCREEN_MAIN].main.humid_label, LV_OPA_COVER, 0);
     
     // Create container for status icons at bottom
     lv_obj_t *status_container = lv_obj_create(screen);
@@ -108,6 +124,8 @@ static void create_main_screen(void) {
     lv_obj_set_style_text_font(g_screens[SCREEN_MAIN].main.range_label, &lv_font_montserrat_18, 0);
     lv_label_set_text(g_screens[SCREEN_MAIN].main.range_label, "0cm");
     lv_obj_align(g_screens[SCREEN_MAIN].main.range_label, LV_ALIGN_BOTTOM_MID, 0, -30);
+       lv_obj_set_style_text_color(g_screens[SCREEN_MAIN].main.range_label, lv_color_make(0, 0, 0), 0);
+    lv_obj_set_style_text_opa(g_screens[SCREEN_MAIN].main.range_label, LV_OPA_COVER, 0);
 
     // Window icon
     g_screens[SCREEN_MAIN].main.window_img = lv_img_create(status_container);

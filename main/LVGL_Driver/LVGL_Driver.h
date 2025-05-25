@@ -52,7 +52,7 @@ static SemaphoreHandle_t lvgl_mux = NULL;
   #define EXAMPLE_LCD_H_RES 320   //宽度 水平分辨率
   #define EXAMPLE_LCD_V_RES 170   //高度 竖直分辨率
 #endif
-
+#define LCD_DPI  180 // dots per inch, used for scaling in LVGL
 #define EXAMPLE_LCD_DMA_Line (EXAMPLE_LCD_V_RES / 2)
 
 #define EXAMPLE_USE_Disp       1

@@ -75,11 +75,17 @@ void example_lvgl_port_update_callback(lv_disp_drv_t *drv)
 lv_disp_t *disp;
 void LVGL_Init(void)
 {
-    ////////////////////////////////////////////////////////////////
-     static lv_disp_draw_buf_t disp_buf; // contains internal graphic buffer(s) called draw buffer(s)
-  static lv_disp_drv_t disp_drv;      // contains callback functions
-  spi_bus_config_t buscfg = 
-  {
+    // Initialize LVGL first
+    ESP_LOGI(TAG_LVGL, "Initialize LVGL library");
+    lv_init();
+
+    // Initialize display buffer
+    ESP_LOGI(TAG_LVGL, "Initialize display buffer");
+    lv_disp_draw_buf_init(&disp_buf, buf1, buf2, LVGL_BUF_LEN);
+
+    // Initialize SPI and LCD
+    spi_bus_config_t buscfg = 
+    {
 #if EXAMPLE_USE_SDCARD
     .miso_io_num = PIN_NUM_MISO,
 #endif
@@ -90,25 +96,7 @@ void LVGL_Init(void)
     .max_transfer_sz =  EXAMPLE_LCD_H_RES * EXAMPLE_LCD_DMA_Line * sizeof(uint16_t), // RGB565 , 传输屏幕的1/10行的数据
   };
   ESP_ERROR_CHECK(spi_bus_initialize(LCD_HOST, &buscfg, SPI_DMA_CH_AUTO));
-#if EXAMPLE_USE_SDCARD
-  esp_vfs_fat_sdmmc_mount_config_t mount_config = 
-  {
-    .format_if_mount_failed = false,     // If mount fails, create partition table and format SD card
-    .max_files = 5,                     // Max number of open files
-    .allocation_unit_size = 512,         // Similar to sector size
-  };
-  sdspi_device_config_t slot_config = SDSPI_DEVICE_CONFIG_DEFAULT();
-  slot_config.gpio_cs = PIN_NUM_SDCS;
-  slot_config.host_id = LCD_HOST;
-  sdmmc_host_t host = SDSPI_HOST_DEFAULT();
-  host.slot = LCD_HOST;
-  ESP_ERROR_CHECK_WITHOUT_ABORT(esp_vfs_fat_sdspi_mount(SDlist, &host, &slot_config, &mount_config, &card)); // Mount SD card
-  if(card != NULL)
-  {
-    sdmmc_card_print_info(stdout, card); // Print card information
-    printf("Size: %.2f(GB)\n", (float)(card->csd.capacity) / 2048 / 1024); // in GB
-  }
-#endif
+
 #if (EXAMPLE_USE_Disp == 1)
   esp_lcd_panel_io_handle_t io_handle = NULL;
   esp_lcd_panel_io_spi_config_t io_config = 
@@ -149,35 +137,37 @@ void LVGL_Init(void)
 #endif
 #endif // EXAMPLE_USE_Disp
 
-    ESP_LOGI(TAG_LVGL, "Initialize LVGL draw buffers");
-    lv_disp_draw_buf_init(&disp_buf, buf1, buf2, LVGL_BUF_LEN); // Initialize LVGL draw buffers
-
+   
+    // Initialize LVGL display driver after LCD setup
     ESP_LOGI(TAG_LVGL, "Initialize LVGL display driver");
-    lv_disp_drv_init(&disp_drv); // Create a new screen object and initialize the associated device
-    disp_drv.hor_res = EXAMPLE_LCD_H_RES; // Horizontal pixel count
-    disp_drv.ver_res = EXAMPLE_LCD_V_RES; // Vertical axis pixel count
-    disp_drv.flush_cb = example_lvgl_flush_cb; // Function : copy a buffer's content to a specific area of the display
-    disp_drv.drv_update_cb = example_lvgl_port_update_callback; // Function : Rotate display and touch, when rotated screen in LVGL. Called when driver parameters are updated.
-    disp_drv.draw_buf = &disp_buf; // LVGL will use this buffer(s) to draw the screens contents
-    disp_drv.user_data = panel_handle; // Custom display driver user data
-///////////////////////////////////////////////////////////////////////
-    ESP_LOGI(TAG_LVGL, "Initialize LVGL library");
-    lv_init();
-    
-    lv_disp_draw_buf_init(&disp_buf, buf1, buf2, LVGL_BUF_LEN );                              // initialize LVGL draw buffers
+    lv_disp_drv_init(&disp_drv);
+    disp_drv.hor_res = EXAMPLE_LCD_H_RES;
+    disp_drv.ver_res = EXAMPLE_LCD_V_RES;
+    disp_drv.physical_hor_res = EXAMPLE_LCD_H_RES;
+    disp_drv.physical_ver_res = EXAMPLE_LCD_V_RES;
+    disp_drv.flush_cb = example_lvgl_flush_cb;
+    disp_drv.drv_update_cb = example_lvgl_port_update_callback;
+    disp_drv.draw_buf = &disp_buf;
+    disp_drv.user_data = panel_handle;
+    disp_drv.antialiasing = true;
+    disp_drv.dpi = 180;  // Keep this value for 1.9" display
 
     ESP_LOGI(TAG_LVGL, "Register display driver to LVGL");
-    lv_disp_drv_init(&disp_drv);                                                                        // Create a new screen object and initialize the associated device
-    disp_drv.hor_res = EXAMPLE_LCD_H_RES;             
-    disp_drv.ver_res = EXAMPLE_LCD_V_RES;                                                     // Horizontal pixel count
-    // disp_drv.rotated = LV_DISP_ROT_90; // 图像旋转                                                            // Vertical axis pixel count
-    disp_drv.flush_cb = example_lvgl_flush_cb;                                                          // Function : copy a buffer's content to a specific area of the display
-    disp_drv.drv_update_cb = example_lvgl_port_update_callback;                                         // Function : Rotate display and touch, when rotated screen in LVGL. Called when driver parameters are updated. 
-    disp_drv.draw_buf = &disp_buf;                                                                      // LVGL will use this buffer(s) to draw the screens contents
-    disp_drv.user_data = panel_handle;                
-    ESP_LOGI(TAG_LVGL,"Register display indev to LVGL");                                                  // Custom display driver user data
-    disp = lv_disp_drv_register(&disp_drv);                                                  // Create screen objects
+    disp = lv_disp_drv_register(&disp_drv);
+    if (disp == NULL) {
+        ESP_LOGE(TAG_LVGL, "Failed to register display driver");
+        return;
+    }
+
+    // Create default style for better text rendering
+    static lv_style_t style_default;
+    lv_style_init(&style_default);
+    lv_style_set_text_font(&style_default, &lv_font_montserrat_18); // Try larger font
+    lv_style_set_text_letter_space(&style_default, 2);              // Increase letter spacing
+    lv_style_set_text_line_space(&style_default, 2);               // Increase line spacing
     
+    // Apply to default screen                                     
+        lv_obj_add_style(lv_scr_act(), &style_default, 0);
     /********************* LVGL *********************/
     ESP_LOGI(TAG_LVGL, "Install LVGL tick timer");
     // Tick interface for LVGL (using esp_timer to generate 2ms periodic event)

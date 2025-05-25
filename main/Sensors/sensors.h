@@ -6,16 +6,16 @@
 #include "driver/gpio.h"
 
 // DHT22 sensor settings
-#define DHT_GPIO_PIN 4          
+#define DHT_GPIO_PIN 3          
 #define DHT_TYPE DHT_TYPE_AM2301   
 #define DHT_READ_INTERVAL_MS 10000 
 
 // RCWL-0516 Presence sensor settings
-#define RCWL_GPIO_PIN 5               
+// #define RCWL_GPIO_PIN 2               
 #define PRESENCE_DEBOUNCE_COUNT 3      
 #define PRESENCE_SAMPLE_INTERVAL_MS 50 
 
-#define HMMD_UART_NUM      UART_NUM_1
+#define HMMD_UART_NUM      UART_NUM_1 //uart rx on chip GPIO 17, tx on GPIO 16 on touch
 #define HMMD_UART_RX_PIN   GPIO_NUM_17  
 #define HMMD_UART_TX_PIN   UART_PIN_NO_CHANGE 
 

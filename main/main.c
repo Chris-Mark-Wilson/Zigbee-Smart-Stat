@@ -582,6 +582,6 @@ void app_main(void)
     xTaskCreate(lvgl_task, "lvgl_handler", 4096, NULL, 6, NULL);
     xTaskCreate(ui_update_task, "ui_update", 4096, NULL, 5, NULL);
     xTaskCreate(zigbee_task, "Zigbee_main", 4096, NULL, 5, NULL);
-    // xTaskCreate(hmmd_read_task, "HMMD_read", 2048, NULL, 4, NULL);
-    // xTaskCreate(dht_sensor_task, "DHT_sensor", 2048, NULL, 4, NULL);
+    xTaskCreate(hmmd_read_task, "HMMD_read", 2048, NULL, 4, NULL);
+    xTaskCreate(dht_sensor_task, "DHT_sensor", 2048, NULL, 4, NULL);
 }

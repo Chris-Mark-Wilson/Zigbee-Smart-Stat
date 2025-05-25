@@ -33,7 +33,7 @@ esp_err_t save_device_to_nvs(zigbee_device_t *device)
             if (stored_devices[i].short_addr == device->short_addr)
             {
                 stored_devices[i].last_seen = now;
-                ESP_LOGI("save device to nvs helper", "Updated last seen time for device 0x%04x", device->short_addr);
+                ESP_LOGI("save device to nvs function", "Updated last seen time for device 0x%04x", device->short_addr);
                 break;
             }
         }
