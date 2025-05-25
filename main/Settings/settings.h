@@ -5,6 +5,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/queue.h"
+#include "lvgl.h" 
 
 
 // control logic parameters
@@ -29,5 +30,7 @@ void update_range_limit(float new_limit);
 void settings_complete_cb(SemaphoreHandle_t semaphore);
 bool save_settings(uint32_t channel_mask, uint16_t target_temp, uint16_t min_temp, uint16_t max_temp);
 void settings_register_callback(settings_callback_t callback, SemaphoreHandle_t param);
+void settings_init_callbacks(void);
+void settings_slider_event_cb(lv_event_t * e);
 
 #endif // SETTINGS_H

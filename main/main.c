@@ -417,9 +417,8 @@ static esp_zb_ep_list_t *create_endpoints(esp_zb_thermostat_cfg_t *thermostat)
 
 static void zigbee_task(void *pvParameters)
 {
-
     ui_switch_screen(SCREEN_SETTINGS);
-    // Setup a semaphore to block until settings are configured
+    //set up semaphore block for settings confirmation
     static SemaphoreHandle_t settings_complete = NULL;
     settings_complete = xSemaphoreCreateBinary();
     
@@ -437,64 +436,52 @@ static void zigbee_task(void *pvParameters)
         if (err == ESP_OK) {
             ESP_LOGI(TAG, "Channel mask loaded from NVS: 0x%08x", channel_mask);
             settings_found = true;
+            // Update global variables with loaded settings
+            g_channel_mask = channel_mask;  // Add this line
             
             // Read other settings
-            // Example: read other global settings
             uint16_t temp;
             if (nvs_get_u16(nvs_handle, "target_temp", &temp) == ESP_OK) {
                 g_target_temp = temp;
-                ESP_LOGI(TAG, "Target temperature loaded: %.2f°C", g_target_temp/100.0f);
             }
-            
             if (nvs_get_u16(nvs_handle, "min_temp", &temp) == ESP_OK) {
                 g_min_temp = temp;
-                ESP_LOGI(TAG, "Min temperature loaded: %.2f°C", g_min_temp/100.0f);
             }
-            
             if (nvs_get_u16(nvs_handle, "max_temp", &temp) == ESP_OK) {
                 g_max_temp = temp; 
-                ESP_LOGI(TAG, "Max temperature loaded: %.2f°C", g_max_temp/100.0f);
             }
-        } else {
-            ESP_LOGW(TAG, "No channel mask in NVS, need configuration");
         }
         nvs_close(nvs_handle);
     }
-    
-    // If settings not found, enter settings mode
-    if (!settings_found) {
-        // Global flag to tell other parts of the app we're in initial setup
-        bool initial_setup_mode = true;
-        
-        // Display settings screen and wait for user to configure
-        ui_event_t event = {
-            .target_screen = SCREEN_SETTINGS,
-            .message = "Initial Setup - Please configure network settings"
-        };
-        xQueueSend(ui_event_queue, &event, portMAX_DELAY);
-        
-        // Register callback for settings completion
-        settings_register_callback(settings_complete_cb, settings_complete);
-        
-        // Block until settings are configured
-        ESP_LOGI(TAG, "Waiting for settings configuration...");
-        xSemaphoreTake(settings_complete, portMAX_DELAY);
-        ESP_LOGI(TAG, "Settings configured, continuing with initialization");
-        
-        // Reload settings from NVS now that they've been saved
-        err = nvs_open("zigbee", NVS_READONLY, &nvs_handle);
-        if (err == ESP_OK) {
-            if (nvs_get_u32(nvs_handle, "channel_mask", &channel_mask) != ESP_OK) {
-                ESP_LOGE(TAG, "Failed to read channel mask after config, using default");
-            }
-            nvs_close(nvs_handle);
-        }
+
+    // Always show settings screen and wait for user confirmation
+    ui_event_t event;
+    if (settings_found) {
+        strncpy(event.message, "Confirm Settings", sizeof(event.message) - 1);
+    } else {
+        strncpy(event.message, "Initial Setup - Please configure network settings", sizeof(event.message) - 1);
     }
-ui_switch_screen(SCREEN_BOOT);
-    // Now initialize Zigbee with the settings (either loaded or newly configured)
+    event.message[sizeof(event.message) - 1] = '\0';  // Ensure null termination
+    event.target_screen = SCREEN_SETTINGS;
+    
+    xQueueSend(ui_event_queue, &event, portMAX_DELAY);
+    
+    // Register callback for settings completion
+    settings_register_callback(settings_complete_cb, settings_complete);
+    
+    // Block until settings are confirmed/configured
+    ESP_LOGI(TAG, "Waiting for settings confirmation...");
+    xSemaphoreTake(settings_complete, portMAX_DELAY);
+    ESP_LOGI(TAG, "Settings confirmed, using channel mask: 0x%08x", g_channel_mask);
+    
+    // Use g_channel_mask instead of the initially loaded value
+    channel_mask = g_channel_mask;
+
+    ui_switch_screen(SCREEN_BOOT);
+    // Initialize Zigbee with confirmed settings
     esp_zb_cfg_t zb_nwk_cfg = ESP_ZB_ZC_CONFIG();
     esp_zb_init(&zb_nwk_cfg);
-
+    
     /* Create customized thermostat endpoint */
     esp_zb_thermostat_cfg_t thermostat_cfg = ESP_ZB_DEFAULT_THERMOSTAT_CONFIG();
     esp_zb_ep_list_t *esp_zb_endpoints = create_endpoints(&thermostat_cfg);
@@ -649,8 +636,8 @@ void app_main(void)
     }
 
     // Initialize UI screens
-    ui_init_screens();
-
+    ui_init_screens(); //sets up the various screens and their elements
+    settings_init_callbacks(); // Initialize settings callbacks called when sliders are moved etc 
     // Create tasks after queue is initialized
     xTaskCreate(lvgl_task, "lvgl_handler", 4096, NULL, 6, NULL);
     xTaskCreate(ui_update_task, "ui_update", 4096, NULL, 5, NULL);

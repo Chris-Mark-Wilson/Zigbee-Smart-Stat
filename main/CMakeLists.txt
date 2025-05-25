@@ -16,6 +16,7 @@ idf_component_register(
      "esp_touch/touch_bsp.c"
     "i2c_bsp/i2c_bsp.c"
     "Settings/settings.c"
+    "LVGL_Driver/touch_driver.c"
 
     INCLUDE_DIRS 
     "./i2c_bsp"

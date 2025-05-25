@@ -1,6 +1,7 @@
 #include "ui_screens.h"
 #include "esp_log.h"
 #include "Zigbee/zigbee.h"
+#include "settings.h"
 
 
 LV_IMG_DECLARE(presence_active);
@@ -162,7 +163,9 @@ static void create_settings_screen(void) {
     g_screens[SCREEN_SETTINGS].settings.high_temp_slider = lv_slider_create(high_temp_container);
     lv_obj_set_width(g_screens[SCREEN_SETTINGS].settings.high_temp_slider, LV_PCT(100));
     lv_slider_set_range(g_screens[SCREEN_SETTINGS].settings.high_temp_slider, 17, 22);
-    
+    lv_obj_add_event_cb(g_screens[SCREEN_SETTINGS].settings.high_temp_slider, 
+                    settings_slider_event_cb, LV_EVENT_VALUE_CHANGED, NULL);
+
     // Low temperature section
     lv_obj_t *low_temp_container = lv_obj_create(settings_container);
     lv_obj_remove_style_all(low_temp_container);
@@ -179,6 +182,8 @@ static void create_settings_screen(void) {
     g_screens[SCREEN_SETTINGS].settings.low_temp_slider = lv_slider_create(low_temp_container);
     lv_obj_set_width(g_screens[SCREEN_SETTINGS].settings.low_temp_slider, LV_PCT(100));
     lv_slider_set_range(g_screens[SCREEN_SETTINGS].settings.low_temp_slider, 13, 20);
+        lv_obj_add_event_cb(g_screens[SCREEN_SETTINGS].settings.low_temp_slider, 
+                    settings_slider_event_cb, LV_EVENT_VALUE_CHANGED, NULL);
     
     // Presence range section
     lv_obj_t *range_container = lv_obj_create(settings_container);
@@ -196,6 +201,8 @@ static void create_settings_screen(void) {
     g_screens[SCREEN_SETTINGS].settings.presence_range_slider = lv_slider_create(range_container);
     lv_obj_set_width(g_screens[SCREEN_SETTINGS].settings.presence_range_slider, LV_PCT(100));
     lv_slider_set_range(g_screens[SCREEN_SETTINGS].settings.presence_range_slider, 0, 7);
+        lv_obj_add_event_cb(g_screens[SCREEN_SETTINGS].settings.presence_range_slider, 
+                    settings_slider_event_cb, LV_EVENT_VALUE_CHANGED, NULL);
     
       // Channel mask section
     lv_obj_t *channel_container = lv_obj_create(settings_container);
@@ -213,6 +220,8 @@ static void create_settings_screen(void) {
     g_screens[SCREEN_SETTINGS].settings.channel_slider = lv_slider_create(channel_container);
     lv_obj_set_width(g_screens[SCREEN_SETTINGS].settings.channel_slider, LV_PCT(100));
     lv_slider_set_range(g_screens[SCREEN_SETTINGS].settings.channel_slider, 11, 25);
+        lv_obj_add_event_cb(g_screens[SCREEN_SETTINGS].settings.channel_slider, 
+                    settings_slider_event_cb, LV_EVENT_VALUE_CHANGED, NULL);
 
     // Apply styles to all sliders
     lv_obj_t * sliders[] = {
