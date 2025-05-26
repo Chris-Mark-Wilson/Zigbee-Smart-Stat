@@ -175,6 +175,18 @@ esp_err_t load_devices_from_nvs(void)
         ESP_LOGI("NVS Helper functions", "Loaded device: %s (0x%04x)",
                  stored_devices[i].name, stored_devices[i].short_addr);
     }
+    //update trv count and window sensor count
+    for (int i= 0; i < stored_device_count; i++)
+    {
+        if (stored_devices[i].type == DEVICE_TYPE_TRV)
+        {
+            trv_count++;
+        }
+        else if (stored_devices[i].type == DEVICE_TYPE_WINDOW_SENSOR)
+        {
+            window_sensor_count++;
+        }
+    }
 
     nvs_close(handle);
     return ESP_OK;
