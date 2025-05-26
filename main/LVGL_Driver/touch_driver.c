@@ -1,8 +1,7 @@
 #include "LVGL_Driver.h"
 #include "i2c_bsp.h"
 
-#define TOUCH_I2C_ADDR 0x38  // Verify this matches your touch controller
-
+#define TOUCH_I2C_ADDR 0x38 
 bool touch_get_coordinates(uint16_t *x, uint16_t *y, uint8_t *touched) {
     uint8_t data[4];
     

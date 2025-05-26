@@ -137,6 +137,7 @@ static void create_main_screen(void) {
 static void create_settings_screen(void) {
     lv_obj_t *screen = lv_obj_create(NULL);
     g_screens[SCREEN_SETTINGS].screen = screen;
+    char buf[32];
     
     // Create main container for settings
     lv_obj_t *settings_container = lv_obj_create(screen);
@@ -158,7 +159,8 @@ static void create_settings_screen(void) {
     lv_obj_set_style_text_font(g_screens[SCREEN_SETTINGS].settings.high_temp_label, &lv_font_montserrat_18, 0);
     lv_obj_set_style_text_color(g_screens[SCREEN_SETTINGS].settings.high_temp_label, lv_color_make(0, 0, 0), 0);
     lv_obj_set_style_text_opa(g_screens[SCREEN_SETTINGS].settings.high_temp_label, LV_OPA_COVER, 0);
-    lv_label_set_text(g_screens[SCREEN_SETTINGS].settings.high_temp_label, "High");
+    snprintf(buf, sizeof(buf), "High: %d°C", g_target_high_temp);
+    lv_label_set_text(g_screens[SCREEN_SETTINGS].settings.high_temp_label, buf);
     
     g_screens[SCREEN_SETTINGS].settings.high_temp_slider = lv_slider_create(high_temp_container);
     lv_obj_set_width(g_screens[SCREEN_SETTINGS].settings.high_temp_slider, LV_PCT(100));
@@ -177,7 +179,8 @@ static void create_settings_screen(void) {
     lv_obj_set_style_text_font(g_screens[SCREEN_SETTINGS].settings.low_temp_label, &lv_font_montserrat_18, 0);
     lv_obj_set_style_text_color(g_screens[SCREEN_SETTINGS].settings.low_temp_label, lv_color_make(0, 0, 0), 0);
     lv_obj_set_style_text_opa(g_screens[SCREEN_SETTINGS].settings.low_temp_label, LV_OPA_COVER, 0);
-    lv_label_set_text(g_screens[SCREEN_SETTINGS].settings.low_temp_label, "Low");
+    snprintf(buf, sizeof(buf), "Low: %d°C", g_target_low_temp);
+    lv_label_set_text(g_screens[SCREEN_SETTINGS].settings.low_temp_label, buf);
     
     g_screens[SCREEN_SETTINGS].settings.low_temp_slider = lv_slider_create(low_temp_container);
     lv_obj_set_width(g_screens[SCREEN_SETTINGS].settings.low_temp_slider, LV_PCT(100));
@@ -196,7 +199,8 @@ static void create_settings_screen(void) {
     lv_obj_set_style_text_font(g_screens[SCREEN_SETTINGS].settings.range_label, &lv_font_montserrat_18, 0);
     lv_obj_set_style_text_color(g_screens[SCREEN_SETTINGS].settings.range_label, lv_color_make(0, 0, 0), 0);
     lv_obj_set_style_text_opa(g_screens[SCREEN_SETTINGS].settings.range_label, LV_OPA_COVER, 0);
-    lv_label_set_text(g_screens[SCREEN_SETTINGS].settings.range_label, "Range");
+    snprintf(buf, sizeof(buf), "Range: %.1fm", g_range_limit);
+    lv_label_set_text(g_screens[SCREEN_SETTINGS].settings.range_label, buf);
     
     g_screens[SCREEN_SETTINGS].settings.presence_range_slider = lv_slider_create(range_container);
     lv_obj_set_width(g_screens[SCREEN_SETTINGS].settings.presence_range_slider, LV_PCT(100));
@@ -204,7 +208,7 @@ static void create_settings_screen(void) {
         lv_obj_add_event_cb(g_screens[SCREEN_SETTINGS].settings.presence_range_slider, 
                     settings_slider_event_cb, LV_EVENT_VALUE_CHANGED, NULL);
     
-      // Channel mask section
+      // Room mask section
     lv_obj_t *room_container = lv_obj_create(settings_container);
     lv_obj_remove_style_all(room_container);
     lv_obj_set_size(room_container, LV_PCT(100), LV_SIZE_CONTENT);
@@ -215,7 +219,8 @@ static void create_settings_screen(void) {
     lv_obj_set_style_text_font(g_screens[SCREEN_SETTINGS].settings.room_label, &lv_font_montserrat_18, 0);
     lv_obj_set_style_text_color(g_screens[SCREEN_SETTINGS].settings.room_label, lv_color_make(0, 0, 0), 0);
     lv_obj_set_style_text_opa(g_screens[SCREEN_SETTINGS].settings.room_label, LV_OPA_COVER, 0);
-    lv_label_set_text(g_screens[SCREEN_SETTINGS].settings.room_label, "Room");
+    snprintf(buf, sizeof(buf), "Room: %d", g_room);
+    lv_label_set_text(g_screens[SCREEN_SETTINGS].settings.room_label, buf);
     
     g_screens[SCREEN_SETTINGS].settings.room_slider = lv_slider_create(room_container);
     lv_obj_set_width(g_screens[SCREEN_SETTINGS].settings.room_slider, LV_PCT(100));

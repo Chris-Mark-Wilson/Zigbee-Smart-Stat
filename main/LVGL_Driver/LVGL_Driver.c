@@ -204,7 +204,7 @@ void touch_read_cb(lv_indev_drv_t * drv, lv_indev_data_t * data) {
         data->state = LV_INDEV_STATE_PRESSED;
         #if (Direction == Normal)
             // Add 35 pixel offset to match display offset
-            data->point.x = x - 35;  // Compensate for display offset
+            data->point.x = x - 0;  // Compensate for display offset if needed
             data->point.y = y;
         #else
             data->point.x = y;

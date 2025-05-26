@@ -144,7 +144,7 @@ void settings_register_callback(settings_callback_t callback, SemaphoreHandle_t 
 }
 
  void settings_save_btn_cb(lv_event_t * e) {
-    ESP_LOGI(TAG, "save_btn_cb high temp: %d, low temp: %d, range: %d, room: 0x%d",
+    ESP_LOGI(TAG, "save_btn_cb high temp: %d, low temp: %d, range: %d, room: %d",
              temp_settings.high_temp, temp_settings.low_temp, 
              temp_settings.presence_range, temp_settings.room);
     // Save temporary settings to globals and NVS
