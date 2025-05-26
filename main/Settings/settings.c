@@ -8,6 +8,7 @@
 #include "freertos/semphr.h"
 #include "esp_check.h"
 #include "esp_err.h"
+#include "Zigbee/zigbee.h"
 
 #define TAG "SETTINGS"
 
@@ -24,17 +25,17 @@ static struct {
 
  void settings_complete_cb(SemaphoreHandle_t semaphore)
 {
-    // This is called when the user finishes setting up or cancels settings
-    xSemaphoreGive(semaphore);
-    
+    ui_switch_screen(SCREEN_BOOT); // Switch back to boot screen
     // Return to boot screen
     ui_event_t event = {
         .target_screen = SCREEN_BOOT,
         .message = "Settings saved, starting Zigbee network..."
     };
     xQueueSend(ui_event_queue, &event, portMAX_DELAY);
-    vTaskDelay(pdMS_TO_TICKS(1000)); // Give time for message to be displayed
+    vTaskDelay(SHORT_DELAY); // Give time for message to be displayed
     ESP_LOGI("Settings_complete_cb", "Settings saved, starting Zigbee network...");
+    // This is called when the user finishes setting up or cancels settings
+    xSemaphoreGive(semaphore);
 }
 bool save_settings(uint16_t room, uint16_t target_temp, uint16_t min_temp, uint16_t presence_range)
 {

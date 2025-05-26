@@ -450,14 +450,29 @@ static void zigbee_task(void *pvParameters)
     xSemaphoreGive(settings_complete); // Signal that settings are loaded
     //program flow will continue from this point
        
-    }
-  
+}
+
     xSemaphoreTake(settings_complete, portMAX_DELAY); // Wait here for settings
+
+    ui_switch_screen(SCREEN_BOOT);
+    char settings_message[100];
+  snprintf(settings_message, sizeof(settings_message), 
+             "Settings loaded: \nHigh Temp: %d°C\n Low Temp: %d°C\n Range Limit: %d m",
+             g_target_high_temp, g_target_low_temp, g_range_limit);
+    
+    ui_event_t event = {
+        .target_screen = SCREEN_BOOT
+    };
+    // Copy the string into event.message
+    strncpy(event.message, settings_message, sizeof(event.message) - 1);
+    event.message[sizeof(event.message) - 1] = '\0';  // Ensure null termination
+    
+    xQueueSend(ui_event_queue, &event, portMAX_DELAY);
+         vTaskDelay(LONG_DELAY);
 
 ESP_LOGI("Settings debug", "Settings loaded: Target High Temp: %.1f, Target Low Temp: %.1f, Range Limit: %.1f",
              g_target_high_temp, g_target_low_temp, g_range_limit);
 
-    ui_switch_screen(SCREEN_BOOT);
 
     // Before initialization
     // Set default values

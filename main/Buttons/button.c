@@ -140,9 +140,35 @@ void button_pressed_cb(button_event_t event)
     {
         if (current_screen == SCREEN_BOOT && network_open)
         {
-            ESP_LOGI(TAG, "Closing network on button press");
-            close_network();
-            ui_switch_screen(SCREEN_MAIN);
+            //check to see if we have at least 1 trv stored
+            if (trv_count > 0)
+            {
+                ESP_LOGI(TAG, "Closing network on button release");
+                close_network();
+                ui_event_t ui_event = {
+                    .target_screen = SCREEN_BOOT,
+                    .message = "Network closed, returning to main screen"};
+                xQueueSend(ui_event_queue, &ui_event, 0);
+                vTaskDelay(LONG_DELAY); // Give time for the message to be displayed
+                ui_switch_screen(SCREEN_MAIN);
+            }
+            else
+            {
+                //if no trvs are stored, display a message and continue in pairing mode
+                ESP_LOGW(TAG, "No TRVs stored - cannot close network");
+                ui_event_t ui_event = {
+                    .target_screen = SCREEN_BOOT,
+                    .message = "No TRVs stored - cannot close network"};
+                xQueueSend(ui_event_queue, &ui_event, 0);
+                 vTaskDelay(LONG_DELAY); // Give time for the message to be displayed
+                      ui_event_t reopen_event = {
+                    .target_screen = SCREEN_BOOT,
+                    .message = PAIRING_MODE_UI_MESSAGE};
+                vTaskDelay(pdMS_TO_TICKS(1500)); // Give time for the message to be displayed
+                xQueueSend(ui_event_queue, &reopen_event, 0);
+            }
+        
+          
         }
         else if (current_screen == SCREEN_MAIN)
         {
@@ -170,16 +196,27 @@ void button_pressed_cb(button_event_t event)
                 // Display network key even if no devices are paired
                 display_network_key();
             }
+            ui_switch_screen(SCREEN_SETTINGS);  
+        } else if (current_screen == SCREEN_SETTINGS) {
+            // If in settings screen, just return to main screen
+            ui_switch_screen(SCREEN_MAIN);
+        } else {
+            ESP_LOGW(TAG, "Button released in unexpected screen: %d", current_screen);
         }
+        
         break;
     }
     case BUTTON_LONG_PRESS:
     {
         ESP_LOGI(TAG, "Long press detected - sending leave request to all devices");
 
-        
+        if(current_screen != SCREEN_BOOT)
+        {
+            ui_switch_screen(SCREEN_BOOT);
+        }
+     
    ui_event_t ui_event = {
-            .target_screen = current_screen,
+            .target_screen = SCREEN_BOOT,
             .message = "Resetting device..."};
         xQueueSend(ui_event_queue, &ui_event, 0);
         vTaskDelay(pdMS_TO_TICKS(1000));
