@@ -158,7 +158,7 @@ static void create_settings_screen(void) {
     lv_obj_set_style_text_font(g_screens[SCREEN_SETTINGS].settings.high_temp_label, &lv_font_montserrat_18, 0);
     lv_obj_set_style_text_color(g_screens[SCREEN_SETTINGS].settings.high_temp_label, lv_color_make(0, 0, 0), 0);
     lv_obj_set_style_text_opa(g_screens[SCREEN_SETTINGS].settings.high_temp_label, LV_OPA_COVER, 0);
-    lv_label_set_text(g_screens[SCREEN_SETTINGS].settings.high_temp_label, "High Temperature");
+    lv_label_set_text(g_screens[SCREEN_SETTINGS].settings.high_temp_label, "High");
     
     g_screens[SCREEN_SETTINGS].settings.high_temp_slider = lv_slider_create(high_temp_container);
     lv_obj_set_width(g_screens[SCREEN_SETTINGS].settings.high_temp_slider, LV_PCT(100));
@@ -177,7 +177,7 @@ static void create_settings_screen(void) {
     lv_obj_set_style_text_font(g_screens[SCREEN_SETTINGS].settings.low_temp_label, &lv_font_montserrat_18, 0);
     lv_obj_set_style_text_color(g_screens[SCREEN_SETTINGS].settings.low_temp_label, lv_color_make(0, 0, 0), 0);
     lv_obj_set_style_text_opa(g_screens[SCREEN_SETTINGS].settings.low_temp_label, LV_OPA_COVER, 0);
-    lv_label_set_text(g_screens[SCREEN_SETTINGS].settings.low_temp_label, "Low Temperature");
+    lv_label_set_text(g_screens[SCREEN_SETTINGS].settings.low_temp_label, "Low");
     
     g_screens[SCREEN_SETTINGS].settings.low_temp_slider = lv_slider_create(low_temp_container);
     lv_obj_set_width(g_screens[SCREEN_SETTINGS].settings.low_temp_slider, LV_PCT(100));
@@ -196,7 +196,7 @@ static void create_settings_screen(void) {
     lv_obj_set_style_text_font(g_screens[SCREEN_SETTINGS].settings.range_label, &lv_font_montserrat_18, 0);
     lv_obj_set_style_text_color(g_screens[SCREEN_SETTINGS].settings.range_label, lv_color_make(0, 0, 0), 0);
     lv_obj_set_style_text_opa(g_screens[SCREEN_SETTINGS].settings.range_label, LV_OPA_COVER, 0);
-    lv_label_set_text(g_screens[SCREEN_SETTINGS].settings.range_label, "Presence Range");
+    lv_label_set_text(g_screens[SCREEN_SETTINGS].settings.range_label, "Range");
     
     g_screens[SCREEN_SETTINGS].settings.presence_range_slider = lv_slider_create(range_container);
     lv_obj_set_width(g_screens[SCREEN_SETTINGS].settings.presence_range_slider, LV_PCT(100));
@@ -205,22 +205,22 @@ static void create_settings_screen(void) {
                     settings_slider_event_cb, LV_EVENT_VALUE_CHANGED, NULL);
     
       // Channel mask section
-    lv_obj_t *channel_container = lv_obj_create(settings_container);
-    lv_obj_remove_style_all(channel_container);
-    lv_obj_set_size(channel_container, LV_PCT(100), LV_SIZE_CONTENT);
-    lv_obj_set_flex_flow(channel_container, LV_FLEX_FLOW_COLUMN);
+    lv_obj_t *room_container = lv_obj_create(settings_container);
+    lv_obj_remove_style_all(room_container);
+    lv_obj_set_size(room_container, LV_PCT(100), LV_SIZE_CONTENT);
+    lv_obj_set_flex_flow(room_container, LV_FLEX_FLOW_COLUMN);
     
     // Channel label styling
-    g_screens[SCREEN_SETTINGS].settings.channel_label = lv_label_create(channel_container);
-    lv_obj_set_style_text_font(g_screens[SCREEN_SETTINGS].settings.channel_label, &lv_font_montserrat_18, 0);
-    lv_obj_set_style_text_color(g_screens[SCREEN_SETTINGS].settings.channel_label, lv_color_make(0, 0, 0), 0);
-    lv_obj_set_style_text_opa(g_screens[SCREEN_SETTINGS].settings.channel_label, LV_OPA_COVER, 0);
-    lv_label_set_text(g_screens[SCREEN_SETTINGS].settings.channel_label, "Zigbee Channel");
+    g_screens[SCREEN_SETTINGS].settings.room_label = lv_label_create(room_container);
+    lv_obj_set_style_text_font(g_screens[SCREEN_SETTINGS].settings.room_label, &lv_font_montserrat_18, 0);
+    lv_obj_set_style_text_color(g_screens[SCREEN_SETTINGS].settings.room_label, lv_color_make(0, 0, 0), 0);
+    lv_obj_set_style_text_opa(g_screens[SCREEN_SETTINGS].settings.room_label, LV_OPA_COVER, 0);
+    lv_label_set_text(g_screens[SCREEN_SETTINGS].settings.room_label, "Room");
     
-    g_screens[SCREEN_SETTINGS].settings.channel_slider = lv_slider_create(channel_container);
-    lv_obj_set_width(g_screens[SCREEN_SETTINGS].settings.channel_slider, LV_PCT(100));
-    lv_slider_set_range(g_screens[SCREEN_SETTINGS].settings.channel_slider, 11, 25);
-        lv_obj_add_event_cb(g_screens[SCREEN_SETTINGS].settings.channel_slider, 
+    g_screens[SCREEN_SETTINGS].settings.room_slider = lv_slider_create(room_container);
+    lv_obj_set_width(g_screens[SCREEN_SETTINGS].settings.room_slider, LV_PCT(100));
+    lv_slider_set_range(g_screens[SCREEN_SETTINGS].settings.room_slider, 1, MAX_ROOMS);
+        lv_obj_add_event_cb(g_screens[SCREEN_SETTINGS].settings.room_slider, 
                     settings_slider_event_cb, LV_EVENT_VALUE_CHANGED, NULL);
 
     // Apply styles to all sliders
@@ -228,10 +228,10 @@ static void create_settings_screen(void) {
         g_screens[SCREEN_SETTINGS].settings.high_temp_slider,
         g_screens[SCREEN_SETTINGS].settings.low_temp_slider,
         g_screens[SCREEN_SETTINGS].settings.presence_range_slider,
-        g_screens[SCREEN_SETTINGS].settings.channel_slider
+        g_screens[SCREEN_SETTINGS].settings.room_slider
     };
     
-    for(int i = 0; i < 4; i++) {
+    for(int i = 0; i < 3; i++) {
         lv_obj_set_style_pad_top(sliders[i], 15, 0);    // Space above slider
         lv_obj_set_style_pad_bottom(sliders[i], 15, 0); // Space below slider
         lv_obj_add_flag(sliders[i], LV_OBJ_FLAG_ADV_HITTEST);  // Better touch handling
@@ -249,6 +249,8 @@ static void create_settings_screen(void) {
     g_screens[SCREEN_SETTINGS].settings.save_btn = lv_btn_create(button_container);
     lv_obj_set_size(g_screens[SCREEN_SETTINGS].settings.save_btn, LV_PCT(45), 40);
     lv_obj_set_style_bg_color(g_screens[SCREEN_SETTINGS].settings.save_btn, lv_color_make(0, 150, 0), 0);
+    lv_obj_add_event_cb(g_screens[SCREEN_SETTINGS].settings.save_btn, 
+                        settings_save_btn_cb, LV_EVENT_CLICKED, NULL);
     
     // Create cancel button
     g_screens[SCREEN_SETTINGS].settings.cancel_btn = lv_btn_create(button_container);
@@ -322,41 +324,29 @@ void ui_update_main_screen(float temp, float humidity, bool presence, bool is_wi
     lv_label_set_text(g_screens[SCREEN_MAIN].main.range_label, range_buf);
 }
 
-void ui_update_settings(uint8_t high_temp, uint8_t low_temp, float presence_range, uint32_t channel_mask) {
+void ui_update_settings(uint8_t high_temp, uint8_t low_temp, float presence_range, uint8_t room) {
 
-     // Find which channel is set in the mask (get position of the set bit)
-    uint8_t channel = 0;
-    for(uint8_t i = 11; i <= 25; i++) {
-        if(channel_mask & (1UL << i)) {
-            channel = i;
-            break;
-        }
-    }
-    
-    // If no valid channel found, default to 11
-    if(channel < 11 || channel > 25) {
-        channel = 11;
-    }
+
 
     lv_slider_set_value(g_screens[SCREEN_SETTINGS].settings.high_temp_slider, high_temp, LV_ANIM_OFF);
     lv_slider_set_value(g_screens[SCREEN_SETTINGS].settings.low_temp_slider, low_temp, LV_ANIM_OFF);
     lv_slider_set_value(g_screens[SCREEN_SETTINGS].settings.presence_range_slider, presence_range/100, LV_ANIM_OFF);
-    lv_slider_set_value(g_screens[SCREEN_SETTINGS].settings.channel_slider, channel, LV_ANIM_OFF);
+    lv_slider_set_value(g_screens[SCREEN_SETTINGS].settings.room_slider, room, LV_ANIM_OFF);
     
     char high_temp_str[16];
     char low_temp_str[16];
     char range_str[16];
-    char channel_str[16];
+    char room_str[16];
     //range limit is in centimeters, convert to meters for display
     snprintf(high_temp_str, sizeof(high_temp_str), "High: %d°C", high_temp);
     snprintf(low_temp_str, sizeof(low_temp_str), "Low: %d°C", low_temp);
     snprintf(range_str, sizeof(range_str), "Range: %.1fm", presence_range/100);
-    snprintf(channel_str,sizeof(channel_str), "Channel: %d", channel);
+    snprintf(room_str,sizeof(room_str), "room: %d", room);
     
     lv_label_set_text(g_screens[SCREEN_SETTINGS].settings.high_temp_label, high_temp_str);
     lv_label_set_text(g_screens[SCREEN_SETTINGS].settings.low_temp_label, low_temp_str);
     lv_label_set_text(g_screens[SCREEN_SETTINGS].settings.range_label, range_str);
-    lv_label_set_text(g_screens[SCREEN_SETTINGS].settings.channel_label, channel_str);
+    lv_label_set_text(g_screens[SCREEN_SETTINGS].settings.room_label, room_str);
 }
 void ui_update_boot_status(const char *status,const char *header) {
 

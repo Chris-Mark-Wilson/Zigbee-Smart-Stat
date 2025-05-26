@@ -172,19 +172,23 @@ static esp_err_t zb_action_handler(esp_zb_core_action_callback_id_t callback_id,
         {
             const esp_zb_zcl_report_attr_message_t *report =
                 (esp_zb_zcl_report_attr_message_t *)message;
-            // ESP_LOGI(TAG, "Report details:");
-            // ESP_LOGI(TAG, "  Source addr: 0x%04x", report->src_address.u.short_addr);
-            // ESP_LOGI(TAG, "  Source endpoint: %d", report->src_endpoint);
-            // ESP_LOGI(TAG, "  Cluster: 0x%04x", report->cluster);
-            // ESP_LOGI(TAG, "  Attribute ID: 0x%04x", report->attribute.id);
+   
+            // First check if device is known and authorized
+            zigbee_device_t *device = get_device_by_short_addr(report->src_address.u.short_addr);
+            if (!device) {
+                ESP_LOGW(TAG, "Received report from unknown device 0x%04x - ignoring",
+                         report->src_address.u.short_addr);
+                break;
+            }
 
-            // Check for IAS Zone cluster (0x0500)
+            // Check if device is in our stored devices list
             if (report->cluster == ESP_ZB_ZCL_CLUSTER_ID_IAS_ZONE)
             {
                 if (report->attribute.id == ESP_ZB_ZCL_ATTR_IAS_ZONE_ZONESTATUS_ID)
                 {
+                    // Process status only from known devices
                     uint16_t zone_status = *(uint16_t *)report->attribute.data.value;
-                    ESP_LOGI(TAG, "  Zone status: 0x%04x", zone_status);
+                    ESP_LOGI(TAG, "Zone status from authorized device: 0x%04x", zone_status);
                     g_is_window_open = (zone_status & 0x0001);
 
                     // Trigger UI update
@@ -257,23 +261,35 @@ static esp_err_t zb_action_handler(esp_zb_core_action_callback_id_t callback_id,
         ESP_LOGI(TAG, "Device leave indication received in action handler");
         break;
 
-    case ESP_ZB_CORE_CMD_IAS_ZONE_ZONE_STATUS_CHANGE_NOT_ID: // 0x0038
-        ESP_LOGI("IAS Zone Action Handler", "IAS Zone status change notification received");
-        if (message)
-        {
-            const esp_zb_zcl_ias_zone_status_change_notification_message_t *status =
-                (esp_zb_zcl_ias_zone_status_change_notification_message_t *)message;
-            ESP_LOGI("IAS Zone Action Handler", "Zone status: 0x%04x", status->zone_status);
-            g_is_window_open = (status->zone_status & 0x0001);
-
-            // Trigger UI update
-            ui_event_t event = {
-                .target_screen = SCREEN_MAIN,
-                .message = ""};
-            xQueueSend(ui_event_queue, &event, 0);
+case ESP_ZB_CORE_CMD_IAS_ZONE_ZONE_STATUS_CHANGE_NOT_ID:
+    ESP_LOGI("IAS Zone Action Handler", "IAS Zone status change notification received");
+    if (message)
+    {
+        const esp_zb_zcl_ias_zone_status_change_notification_message_t *status =
+            (esp_zb_zcl_ias_zone_status_change_notification_message_t *)message;
+            
+        // First verify device is authorized
+        zigbee_device_t *device = get_device_by_short_addr(status->info.src_address.u.short_addr);
+        if (!device) {
+            ESP_LOGW(TAG, "Status change from unknown device 0x%04x - ignoring", 
+                     status->info.src_address.u.short_addr);
+            break;
         }
-        break;
-        break;
+
+        ESP_LOGI("IAS Zone Action Handler", "Zone status from device 0x%04x: 0x%04x", 
+                 status->info.src_address.u.short_addr, status->zone_status);
+         
+        g_is_window_open = (status->zone_status & 0x0001);
+
+        // Trigger UI update
+        ui_event_t event = {
+            .target_screen = SCREEN_MAIN,
+            .message = ""
+        };
+        xQueueSend(ui_event_queue, &event, 0);
+    }
+    break;
+       
 
     case ESP_ZB_ZDO_SIGNAL_DEVICE_ANNCE:
         ESP_LOGI(TAG, "Device announce signal received in action handler");
@@ -417,71 +433,43 @@ static esp_zb_ep_list_t *create_endpoints(esp_zb_thermostat_cfg_t *thermostat)
 
 static void zigbee_task(void *pvParameters)
 {
-    ui_switch_screen(SCREEN_SETTINGS);
-    //set up semaphore block for settings confirmation
     static SemaphoreHandle_t settings_complete = NULL;
-    settings_complete = xSemaphoreCreateBinary();
-    
-    // Set default values
-    uint32_t channel_mask = ESP_ZB_PRIMARY_CHANNEL_MASK;
-    bool settings_found = false;
-    
-    // Try to read settings from NVS
-    nvs_handle_t nvs_handle;
-    esp_err_t err = nvs_open("zigbee", NVS_READONLY, &nvs_handle);
-    
-    if (err == ESP_OK) {
-        // Try to read channel mask
-        err = nvs_get_u32(nvs_handle, "channel_mask", &channel_mask);
-        if (err == ESP_OK) {
-            ESP_LOGI(TAG, "Channel mask loaded from NVS: 0x%08x", channel_mask);
-            settings_found = true;
-            // Update global variables with loaded settings
-            g_channel_mask = channel_mask;  // Add this line
-            
-            // Read other settings
-            uint16_t temp;
-            if (nvs_get_u16(nvs_handle, "target_temp", &temp) == ESP_OK) {
-                g_target_temp = temp;
-            }
-            if (nvs_get_u16(nvs_handle, "min_temp", &temp) == ESP_OK) {
-                g_min_temp = temp;
-            }
-            if (nvs_get_u16(nvs_handle, "max_temp", &temp) == ESP_OK) {
-                g_max_temp = temp; 
-            }
-        }
-        nvs_close(nvs_handle);
-    }
-
-    // Always show settings screen and wait for user confirmation
-    ui_event_t event;
-    if (settings_found) {
-        strncpy(event.message, "Confirm Settings", sizeof(event.message) - 1);
-    } else {
-        strncpy(event.message, "Initial Setup - Please configure network settings", sizeof(event.message) - 1);
-    }
-    event.message[sizeof(event.message) - 1] = '\0';  // Ensure null termination
-    event.target_screen = SCREEN_SETTINGS;
-    
-    xQueueSend(ui_event_queue, &event, portMAX_DELAY);
-    
-    // Register callback for settings completion
+    settings_complete = xSemaphoreCreateBinary();//create traffic light red
     settings_register_callback(settings_complete_cb, settings_complete);
-    
-    // Block until settings are confirmed/configured
-    ESP_LOGI(TAG, "Waiting for settings confirmation...");
-    xSemaphoreTake(settings_complete, portMAX_DELAY);
-    ESP_LOGI(TAG, "Settings confirmed, using channel mask: 0x%08x", g_channel_mask);
-    
-    // Use g_channel_mask instead of the initially loaded value
-    channel_mask = g_channel_mask;
+
+    //attempt to load settings from nvs
+    if(load_settings_from_nvs() != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to load settings from NVS");
+        ui_switch_screen(SCREEN_SETTINGS);//save button will release the semaphore with new settings, cancel will release with default settings
+        // Wait for settings to be saved or cancelled
+        ESP_LOGI(TAG, "Waiting for settings to be saved or cancelled");
+        xSemaphoreTake(settings_complete, portMAX_DELAY); // Wait here for settings
+        ESP_LOGI(TAG, "Settings saved or cancelled, continuing initialization");
+    } else {
+    ESP_LOGI(TAG, "Settings loaded from NVS");
+    xSemaphoreGive(settings_complete); // Signal that settings are loaded
+    //program flow will continue from this point
+       
+    }
+  
+    xSemaphoreTake(settings_complete, portMAX_DELAY); // Wait here for settings
+
+ESP_LOGI("Settings debug", "Settings loaded: Target High Temp: %.1f, Target Low Temp: %.1f, Range Limit: %.1f",
+             g_target_high_temp, g_target_low_temp, g_range_limit);
 
     ui_switch_screen(SCREEN_BOOT);
-    // Initialize Zigbee with confirmed settings
+
+    // Before initialization
+    // Set default values
+    ESP_ERROR_CHECK(esp_zb_set_primary_network_channel_set(ESP_ZB_PRIMARY_CHANNEL_MASK));
+
+
+    // Initialize Zigbee stack
     esp_zb_cfg_t zb_nwk_cfg = ESP_ZB_ZC_CONFIG();
     esp_zb_init(&zb_nwk_cfg);
-    
+
+
+
     /* Create customized thermostat endpoint */
     esp_zb_thermostat_cfg_t thermostat_cfg = ESP_ZB_DEFAULT_THERMOSTAT_CONFIG();
     esp_zb_ep_list_t *esp_zb_endpoints = create_endpoints(&thermostat_cfg);
@@ -489,8 +477,6 @@ static void zigbee_task(void *pvParameters)
     /* Register the device */
     esp_zb_device_register(esp_zb_endpoints);
 
-    // Set channel mask from settings
-    esp_zb_set_primary_network_channel_set(channel_mask);
 
     esp_zb_core_action_handler_register(zb_action_handler);
 
@@ -511,7 +497,7 @@ static void hmmd_read_task(void *arg)
     uint8_t data[128];
     char *range_str;
 
-    ESP_LOGI(TAG, "HMMD task started with initial range limit: %.1f cm", g_range_limit);
+    ESP_LOGI(TAG, "HMMD task started with initial range limit: %d m", g_range_limit);
 
     while (1)
     {
@@ -531,7 +517,7 @@ static void hmmd_read_task(void *arg)
                     g_current_range = range_cm; // Update the global range variable defined in ui_screens.h
                     // Update presence state
 
-                    g_presence_detected = (range_cm < g_range_limit);
+                    g_presence_detected = (range_cm < g_range_limit* 100.0f); // Convert limit to cm for comparison
 
                     // Always trigger UI update when we get valid range data
                     ui_event_t event = {
@@ -582,7 +568,7 @@ static void ui_update_task(void *pvParameters)
                     g_target_high_temp,
                     g_target_low_temp,
                     g_range_limit,
-                g_channel_mask);
+                    g_room);
                 break;
 
             case SCREEN_COUNT:

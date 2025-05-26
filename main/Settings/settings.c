@@ -17,28 +17,14 @@ static SemaphoreHandle_t settings_callback_param = NULL;
 static struct {
     uint8_t high_temp;
     uint8_t low_temp;
-    float presence_range;
-    uint32_t channel_mask;
+    uint8_t presence_range;
+    uint8_t room;
 } temp_settings;
 
-void update_range_limit(float new_limit)
-{
-    if (new_limit < 2.0f) new_limit = 2.0f;
-    if (new_limit > 7.0f) new_limit = 7.0f;
-    
-    g_range_limit = new_limit;
-    ESP_LOGI(TAG, "Range limit updated to %.2fm", g_range_limit);
-    
-    // Force UI update when range limit changes
-    ui_event_t event = {
-        .target_screen = SCREEN_MAIN,
-        .message = ""
-    };
-    xQueueSend(ui_event_queue, &event, 0);
-}
+
  void settings_complete_cb(SemaphoreHandle_t semaphore)
 {
-    // This is called when the user finishes setting up
+    // This is called when the user finishes setting up or cancels settings
     xSemaphoreGive(semaphore);
     
     // Return to boot screen
@@ -47,11 +33,21 @@ void update_range_limit(float new_limit)
         .message = "Settings saved, starting Zigbee network..."
     };
     xQueueSend(ui_event_queue, &event, portMAX_DELAY);
+    vTaskDelay(pdMS_TO_TICKS(1000)); // Give time for message to be displayed
+    ESP_LOGI("Settings_complete_cb", "Settings saved, starting Zigbee network...");
 }
-bool save_settings(uint32_t channel_mask, uint16_t target_temp, uint16_t min_temp, uint16_t max_temp)
+bool save_settings(uint16_t room, uint16_t target_temp, uint16_t min_temp, uint16_t presence_range)
 {
+    ESP_LOGI(TAG, "Saving settings: room: 0x%d, Target Temp: %d, Min Temp: %d, Range: %d",
+             room, target_temp, min_temp, presence_range);
     esp_err_t err;
     nvs_handle_t nvs_handle;
+    //save into globals
+    g_room = room;
+    g_target_high_temp = target_temp;
+    g_target_low_temp = min_temp;
+    g_range_limit = presence_range; // Convert to cm for storage
+    
     
     err = nvs_open("zigbee", NVS_READWRITE, &nvs_handle);
     if (err != ESP_OK) {
@@ -60,9 +56,9 @@ bool save_settings(uint32_t channel_mask, uint16_t target_temp, uint16_t min_tem
     }
     
     // Save channel mask
-    err = nvs_set_u32(nvs_handle, "channel_mask", channel_mask);
+    err = nvs_set_u32(nvs_handle, "room", room);
     if (err != ESP_OK) {
-        ESP_LOGE(TAG, "Error saving channel mask: %s", esp_err_to_name(err));
+        ESP_LOGE(TAG, "Error saving room number: %s", esp_err_to_name(err));
         nvs_close(nvs_handle);
         return false;
     }
@@ -78,7 +74,7 @@ bool save_settings(uint32_t channel_mask, uint16_t target_temp, uint16_t min_tem
         ESP_LOGE(TAG, "Error saving min temp: %s", esp_err_to_name(err));
     }
     
-    err = nvs_set_u16(nvs_handle, "max_temp", max_temp);
+    err = nvs_set_u16(nvs_handle, "range_limit", presence_range);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "Error saving max temp: %s", esp_err_to_name(err));
     }
@@ -117,6 +113,7 @@ void settings_register_callback(settings_callback_t callback, SemaphoreHandle_t 
         snprintf(buf, sizeof(buf), "High: %d°C", value);
         lv_label_set_text(g_screens[SCREEN_SETTINGS].settings.high_temp_label, buf);
         ESP_LOGI("SLIDER", "High temp slider: %d", value);
+        temp_settings.high_temp = value; // Update temporary settings
     }
     else if(slider == g_screens[SCREEN_SETTINGS].settings.low_temp_slider) {
         g_screens[SCREEN_SETTINGS].settings.temp_values.low_temp = value;
@@ -124,53 +121,55 @@ void settings_register_callback(settings_callback_t callback, SemaphoreHandle_t 
         snprintf(buf, sizeof(buf), "Low: %d°C", value);
         lv_label_set_text(g_screens[SCREEN_SETTINGS].settings.low_temp_label, buf);
         ESP_LOGI("SLIDER", "Low temp slider: %d", value);
+        temp_settings.low_temp = value; // Update temporary settings
     }
     else if(slider == g_screens[SCREEN_SETTINGS].settings.presence_range_slider) {
         g_screens[SCREEN_SETTINGS].settings.temp_values.presence_range = value * 100;
         char buf[32];
-        snprintf(buf, sizeof(buf), "Range: %.1fm", value/10.0f);
+        snprintf(buf, sizeof(buf), "Range: %dm", value);
         lv_label_set_text(g_screens[SCREEN_SETTINGS].settings.range_label, buf);
         ESP_LOGI("SLIDER", "Range slider: %d", value);
+        temp_settings.presence_range = value; // Update temporary settings
     }
-    else if(slider == g_screens[SCREEN_SETTINGS].settings.channel_slider) {
-        g_screens[SCREEN_SETTINGS].settings.temp_values.channel_mask = (1UL << value);
+    else if(slider == g_screens[SCREEN_SETTINGS].settings.room_slider) {
+        g_screens[SCREEN_SETTINGS].settings.temp_values.room = value;
         char buf[32];
-        snprintf(buf, sizeof(buf), "Channel: %d", value);
-        lv_label_set_text(g_screens[SCREEN_SETTINGS].settings.channel_label, buf);
-        ESP_LOGI("SLIDER", "Channel slider: %d", value);
+        snprintf(buf, sizeof(buf), "Room: %d", value);
+        lv_label_set_text(g_screens[SCREEN_SETTINGS].settings.room_label, buf);
+        ESP_LOGI("SLIDER", "Room slider: %d", value);
+        temp_settings.room =  value; // Update temporary settings   
     }
 
-    // // Trigger UI update to reflect changes
-    // ui_event_t event = {
-    //     .target_screen = SCREEN_SETTINGS,
-    //     .message = ""
-    // };
-    // xQueueSend(ui_event_queue, &event, 0);
+
 }
 
-static void settings_save_btn_cb(lv_event_t * e) {
+ void settings_save_btn_cb(lv_event_t * e) {
+    ESP_LOGI(TAG, "save_btn_cb high temp: %d, low temp: %d, range: %d, room: 0x%d",
+             temp_settings.high_temp, temp_settings.low_temp, 
+             temp_settings.presence_range, temp_settings.room);
     // Save temporary settings to globals and NVS
     g_target_high_temp = temp_settings.high_temp;
     g_target_low_temp = temp_settings.low_temp;
     g_range_limit = temp_settings.presence_range;
-    g_channel_mask = temp_settings.channel_mask;
+    g_room = temp_settings.room;
     
-    save_settings(temp_settings.channel_mask, 
+    save_settings(temp_settings.room, 
                  temp_settings.high_temp, 
                  temp_settings.low_temp,
                  temp_settings.presence_range);
                  
-    // Call the registered callback if exists
-    if (settings_callback) {
-        settings_callback(settings_callback_param);
-    }
+   
     
-    ui_switch_screen(SCREEN_MAIN);
+    ui_switch_screen(SCREEN_BOOT);
 }
 
-static void settings_cancel_btn_cb(lv_event_t * e) {
+ void settings_cancel_btn_cb(lv_event_t * e) {
+    ESP_LOGI(TAG, "Settings changes discarded, returning to main screen");
     // Discard temporary changes and return to main screen
-    ui_switch_screen(SCREEN_MAIN);
+    if(settings_callback) {
+        settings_callback(settings_callback_param);
+    }
+    ui_switch_screen(SCREEN_BOOT);
 }
 
 // Add this function to register the callbacks with the UI elements
@@ -179,7 +178,7 @@ void settings_init_callbacks(void) {
     temp_settings.high_temp = g_target_high_temp;
     temp_settings.low_temp = g_target_low_temp;
     temp_settings.presence_range = g_range_limit;
-    temp_settings.channel_mask = g_channel_mask;
+    temp_settings.room = g_room;
     
     // Register callbacks
     lv_obj_add_event_cb(g_screens[SCREEN_SETTINGS].settings.high_temp_slider, 
@@ -188,11 +187,44 @@ void settings_init_callbacks(void) {
                         settings_slider_event_cb, LV_EVENT_VALUE_CHANGED, NULL);
     lv_obj_add_event_cb(g_screens[SCREEN_SETTINGS].settings.presence_range_slider, 
                         settings_slider_event_cb, LV_EVENT_VALUE_CHANGED, NULL);
-    lv_obj_add_event_cb(g_screens[SCREEN_SETTINGS].settings.channel_slider, 
+    lv_obj_add_event_cb(g_screens[SCREEN_SETTINGS].settings.room_slider, 
                         settings_slider_event_cb, LV_EVENT_VALUE_CHANGED, NULL);
     
     lv_obj_add_event_cb(g_screens[SCREEN_SETTINGS].settings.save_btn, 
                         settings_save_btn_cb, LV_EVENT_CLICKED, NULL);
     lv_obj_add_event_cb(g_screens[SCREEN_SETTINGS].settings.cancel_btn, 
                         settings_cancel_btn_cb, LV_EVENT_CLICKED, NULL);
+}
+
+esp_err_t load_settings_from_nvs(void) {
+    nvs_handle_t nvs_handle;
+    esp_err_t err = nvs_open("zigbee", NVS_READONLY, &nvs_handle);
+    
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Error opening NVS handle: %s", esp_err_to_name(err));
+        return err;
+    }
+    
+    // Load channel mask
+    uint16_t room = 1; // Default room number
+    err = nvs_get_u16(nvs_handle, "room", &room);
+    if (err == ESP_OK) {
+        g_room = room;
+    }
+    
+    // Load other settings
+    uint16_t temp;
+    if (nvs_get_u16(nvs_handle, "target_temp", &temp) == ESP_OK) {
+        g_target_high_temp = temp;
+    }
+    if (nvs_get_u16(nvs_handle, "min_temp", &temp) == ESP_OK) {
+        g_target_low_temp = temp;
+    }
+    if (nvs_get_u16(nvs_handle, "range_limit", &temp) == ESP_OK) {
+        g_range_limit = temp / 100.0f; // Convert back to meters
+    }
+    
+    nvs_close(nvs_handle);
+    
+    return ESP_OK;
 }
