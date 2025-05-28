@@ -9,7 +9,18 @@
 Fork and clone, 
 
 Using vscode and Espressifs ESP-IDF extension, download and install the [esp-idf](https://docs.espressif.com/projects/esp-idf/en/stable/esp32c6/get-started/index.html). Follow the instructions. 
-open in esp_idf
+open in vscode, either pull in the tools from wherever you installed the IDF 
+e.g.
+~~~
+ . ~/esp/esp-idf/export.sh
+ ~~~
+ ~~~
+idf.py set-target esp32c6 
+~~~
+~~~
+idf.py build flash monitor
+~~~
+  into a terminal so you have access to the build tools, or just open an esp-idf terminal using the esp-idf extension in vscode. 
 
 Set up on a breadboard to test, you will need (apart from the [esp32c6 touch (scroll down for pinout)](https://www.waveshare.com/esp32-c6-lcd-1.9.htm)) :- 
 
@@ -25,7 +36,7 @@ A *REGULATED* step down 240v-5v transformer [amazon](https://www.amazon.co.uk/JZ
 
 A Case (enclosure) To assemble into, [these ones](https://thepihut.com/products/room-sensor-enclosure-size-1) will fit over a standard (76mm) uk single socket backbox or pattress
 
-set target to esp32c6 and flash
+
 
 **Current version, touch branch works on esp32c6 1.9" touch, development ceased for other versions**
 
