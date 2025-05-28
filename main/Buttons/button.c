@@ -4,8 +4,11 @@
 #include "freertos/task.h"
 #include "freertos/queue.h"
 #include "esp_timer.h"
+#include "helpers.h"
+#include "zigbee.h"
+#include "ui_events.h"
 
-static const char *TAG = "BUTTON";
+static const char *TAG = "BUTTON ";
 static button_callback_t button_callback = NULL;
 static bool is_isr_installed = false;
 
@@ -99,7 +102,7 @@ esp_err_t button_init(void)
     }
 
     // Create button processing task
-    xTaskCreate(button_task, "button_task", 2048, NULL, 10, NULL);
+    xTaskCreate(button_task, "button_task", 4096, NULL, 10, NULL);
 
     ESP_LOGI(TAG, "Button initialized on GPIO %d", NETWORK_CONTROL_BTN_PIN);
     return ESP_OK;
@@ -109,15 +112,119 @@ bool button_is_pressed(void)
 {
     return (gpio_get_level(NETWORK_CONTROL_BTN_PIN) == 0);
 }
-//this function is in main.c
-// // Callback function for button press
-// static void button_pressed_cb(void)
-// {
-//     ESP_LOGI(TAG, "Button pressed!");
-//     // We'll add network control logic here later
-// }
+
 
 void button_register_callback(button_callback_t callback)
 {
     button_callback = callback;
+}
+// Callback function for button press
+void button_pressed_cb(button_event_t event)
+{
+
+    switch (event)
+    {
+    case BUTTON_PRESSED:
+    {
+        ESP_LOGI(TAG, "Button pressed - waiting for release");
+        // address of the window sensor and endpoint
+
+        uint16_t addr = stored_devices[0].short_addr;  // Replace with actual address
+        uint8_t endpoint = stored_devices[0].endpoint; // Replace with actual endpoint
+        read_window_sensor_status(addr, endpoint);
+
+        break;
+    }
+
+    case BUTTON_RELEASED:
+    {
+        ESP_LOGI(TAG, "current screen %d, network open %s", current_screen, network_open? "true" : "false");
+        if (current_screen == SCREEN_BOOT && network_open)
+        {
+            //check to see if we have at least 1 trv stored
+            if (trv_count > 0)
+            {
+                ESP_LOGI(TAG, "Closing network on button release");
+                close_network();
+                ui_event_t ui_event = {
+                    .target_screen = SCREEN_BOOT,
+                    .message = "Network closed, returning to main screen"};
+                xQueueSend(ui_event_queue, &ui_event, 0);
+                vTaskDelay(LONG_DELAY); // Give time for the message to be displayed
+                ui_switch_screen(SCREEN_MAIN);
+            }
+            else
+            {
+                //if no trvs are stored, display a message and continue in pairing mode
+                ESP_LOGW(TAG, "No TRVs stored - cannot close network");
+                ui_event_t ui_event = {
+                    .target_screen = SCREEN_BOOT,
+                    .message = "No TRVs stored - cannot close network"};
+                xQueueSend(ui_event_queue, &ui_event, 0);
+                 vTaskDelay(LONG_DELAY); // Give time for the message to be displayed
+                      ui_event_t reopen_event = {
+                    .target_screen = SCREEN_BOOT,
+                    .message = PAIRING_MODE_UI_MESSAGE};
+                vTaskDelay(pdMS_TO_TICKS(1500)); // Give time for the message to be displayed
+                xQueueSend(ui_event_queue, &reopen_event, 0);
+            }
+        
+          
+        }
+        else if (current_screen == SCREEN_MAIN)
+        {
+            if (stored_device_count > 0)
+            {
+                show_stored_devices();
+                // Toggle between min and max temperature and corresponding mode
+                g_trv_state = !g_trv_state;
+            
+                if (g_trv_state)
+                {
+                    turn_trvs_on();
+                }
+                else
+                {
+                    turn_trvs_off();
+                }
+
+                // // Also display the network key for debugging
+                display_network_key();
+            }
+            else
+            {
+                ESP_LOGW(TAG, "No devices stored - cannot send commands");
+                // Display network key even if no devices are paired
+                display_network_key();
+            }
+            ui_switch_screen(SCREEN_SETTINGS);  
+        } 
+        
+        break;
+    }
+    case BUTTON_LONG_PRESS:
+    {
+        ESP_LOGI(TAG, "Long press detected - sending leave request to all devices");
+
+        if(current_screen != SCREEN_BOOT)
+        {
+            ui_switch_screen(SCREEN_BOOT);
+        }
+     
+   ui_event_t ui_event = {
+            .target_screen = SCREEN_BOOT,
+            .message = "Resetting device..."};
+        xQueueSend(ui_event_queue, &ui_event, 0);
+        vTaskDelay(pdMS_TO_TICKS(1000));
+
+        ESP_LOGI(TAG, "Unpairing all devices");
+        strcpy(ui_event.message , "Unpairing devices...");
+        xQueueSend(ui_event_queue, &ui_event, 0);
+        reset_device();
+        vTaskDelay(pdMS_TO_TICKS(1000));
+
+    
+        break;
+    }
+    }
 }

@@ -3,6 +3,9 @@
 
 #include "esp_err.h"
 #include "driver/gpio.h"
+#include "Zigbee/zigbee.h"
+#include "ui_screens.h"
+#include "main.h"
 
 #define NETWORK_CONTROL_BTN_PIN GPIO_NUM_9
 #define DEBOUNCE_TIME_MS 50  // Reduced debounce time
@@ -18,5 +21,6 @@ typedef void (*button_callback_t)(button_event_t event);
 
 esp_err_t button_init(void);
 void button_register_callback(button_callback_t callback);
+ void button_pressed_cb(button_event_t event);
 
 #endif

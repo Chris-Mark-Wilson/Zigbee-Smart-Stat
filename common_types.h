@@ -22,3 +22,42 @@ typedef enum {
 } esp_zb_af_profile_id_t; // in zcl/esp_zigbee_zcl_common.h
 
 typedef void (*esp_zb_zdo_match_desc_callback_t)(esp_zb_zdp_status_t zdo_status, uint16_t addr, uint8_t endpoint, void *user_ctx);
+
+typedef struct esp_zb_zcl_config_report_record_s {
+    esp_zb_zcl_report_direction_t direction; /*!< Direction field specifies whether values of the attribute are to be reported, or whether reports of the
+                                                  attribute are to be received.*/
+    uint16_t attributeID;                    /*!< Attribute ID to report */
+    union {
+        struct {
+            uint8_t attrType;                /*!< Attribute type to report refer to zb_zcl_common.h zcl_attr_type */
+            uint16_t min_interval;           /*!< Minimum reporting interval */
+            uint16_t max_interval;           /*!< Maximum reporting interval */
+            void *reportable_change;         /*!< Minimum change to attribute will result in report */
+        };                                   /*!< Configurations to report sender. This is presented when the direction is ESP_ZB_ZCL_REPORT_DIRECTION_SEND,
+                                              *   when the receiver is configuring the sender to report the attributes.
+                                              */
+        struct {
+            uint16_t timeout;                /*!< Timeout period */
+        };                                   /*!< Configurations to report receiver. This is presented when the direction is ESP_ZB_ZCL_REPORT_DIRECTION_RECV,
+                                              *   when the sender is configuring the receiver to receive to attributes report.
+                                              */
+    };
+} esp_zb_zcl_config_report_record_t;
+
+/**
+ * @brief The Zigbee ZCL configure report command struct
+ *
+ */
+typedef struct esp_zb_zcl_config_report_cmd_s {
+    esp_zb_zcl_basic_cmd_t zcl_basic_cmd;               /*!< Basic command info */
+    esp_zb_zcl_address_mode_t address_mode;             /*!< APS addressing mode constants refer to esp_zb_zcl_address_mode_t */
+    uint16_t clusterID;                                 /*!< Cluster ID to report */
+    struct {
+        uint8_t manuf_specific   : 2;                   /*!< Sent as manufacturer extension with code. */
+        uint8_t direction        : 1;                   /*!< The command direction, refer to esp_zb_zcl_cmd_direction_t */
+        uint8_t dis_defalut_resp : 1;                   /*!< Disable default response for this command. */
+    };
+    uint16_t manuf_code;                                /*!< The manufacturer code sent with the command. */
+    uint16_t record_number;                             /*!< Number of report configuration record in the record_field */
+    esp_zb_zcl_config_report_record_t *record_field;    /*!< Report configuration records, @ref esp_zb_zcl_config_report_record_s */
+} esp_zb_zcl_config_report_cmd_t;
