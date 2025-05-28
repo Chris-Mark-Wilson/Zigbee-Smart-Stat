@@ -63,7 +63,7 @@ set target to esp32c6 and flash
 # How do I use it? #
 
 ### Settings screen ###
-~~~
+
 On first boot (or long press boot button), the settings screen is shown. There are 4 sliders.
 
 High temp: the upper target temp for when room is occupied.
@@ -75,10 +75,10 @@ Presence range: Basically, the distance to the opposite wall. As the microwave p
 Room Number: To be used when collating data.
 
 Save button / Cancel button: On save, the settings are saved into non volatile storage (NVS) so that a power cut will not remove the settings. On cancel the default settings are applied but nothing is saved (maybe a todo) so will boot back into settings if power is cut and no settings are saved.
-~~~
+
 
 ### Boot screen ###
-~~~
+
 If settings are found (or saved from settings screen), the thermostat will start the zigbee stack.
 
 Once the network is formed, the thermostat will check NVS for stored (paired) devices and load these from memory (again, so we dont have to re-pair devices after power cut)
@@ -88,10 +88,10 @@ The device check includes a test for TRV devices. If none are found (even if the
 If a TRV device is found in memory, it is assumed all devices are paired and the flow continues to main screen.
 
 If at this point you have forgotten to pair any required window sensors, long press the boot button to unpair any existing devices and clear NVS before rebooting in factory mode.
-~~~
+
 
 ### Main screen ###
-~~~
+
 The main screen is just the display for the occupant. There are 3 sections.
 
 Current temp in degrees celcius (to a tenth of a degree)
@@ -99,11 +99,13 @@ Current temp in degrees celcius (to a tenth of a degree)
 Relative humidity (rh%)
 
 Window status/Presence detected icons. The window will be OPEN if any windows are open and the presence icon will be SOLID when presence detected, hollow when not. These are just indicators. The actual range to a detected person/moving object is shown underneath the presence icon in metres to 1 decimal place (accuracy 10cm)
-~~~
+
 
 
 ### TODO ###
 Currently still under development.
+
+Control logic...
 
 Add better indication when devices pair e.g. show device list with name and type as they join the network
 
