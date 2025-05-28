@@ -113,7 +113,7 @@ Add a Log Screen to be tapped in sequence, showing total time ON and OFF
 
 Include more globals and NVS storage for these logs
 
-Add a temp offset for when its mounted in a case, just an ENUM will do, to suit the enclosure, percieved temp will rise when enclosed but previous iterations have been stable once mounted.
+Add a temp offset for when its mounted in a case, just an ENUM will do, to suit the enclosure, perceived temp will rise when enclosed but previous iterations have been stable once mounted.
 
 
 
