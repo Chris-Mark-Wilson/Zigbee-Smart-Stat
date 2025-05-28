@@ -470,29 +470,37 @@ void zigbee_signal_handler(esp_zb_app_signal_t *signal_struct)
                 {
                     ui_event_t loaded_event = {
                         .target_screen = SCREEN_BOOT,
-                        .message = "Devices loaded from NVS"};
+                        .message = "Devices loaded from memory"};
                     xQueueSend(ui_event_queue, &loaded_event, 0);
                     ESP_LOGI(TAG, "Devices loaded from NVS");
                      vTaskDelay(SHORT_DELAY);
+                     close_network(); // Close network after loading devices
+                    ui_event_t close_event = {
+                        .target_screen = SCREEN_BOOT,
+                        .message = "Starting thermostat"};
+                    xQueueSend(ui_event_queue, &close_event, 0);
+                    vTaskDelay(SHORT_DELAY); // Give time for the message to be displayed
+                    ui_switch_screen(SCREEN_MAIN); // Switch to main screen
+                    ESP_LOGI(TAG, "Network closed, returning to main screen");
                 }
                 else
                 {
                     ui_event_t failed_event = {
                         .target_screen = SCREEN_BOOT,
-                        .message = "Failed to load devices from NVS"};
+                        .message = "No devices in memory"};
                     xQueueSend(ui_event_queue, &failed_event, 0);
                     ESP_LOGE(TAG, "Failed to load devices from NVS");
                      vTaskDelay(SHORT_DELAY);
 
+                     ui_event_t reopen_event = {
+                         .target_screen = SCREEN_BOOT,
+                         .message = PAIRING_MODE_UI_MESSAGE};
+                     vTaskDelay(pdMS_TO_TICKS(1500)); // Give time for the message to be displayed
+                     xQueueSend(ui_event_queue, &reopen_event, 0);
+                     ESP_LOGI(TAG, "Network open, add devices...");
+                     open_network(180); // Open for 3 minutes
                 }
                 
-                ui_event_t reopen_event = {
-                    .target_screen = SCREEN_BOOT,
-                    .message = PAIRING_MODE_UI_MESSAGE};
-                vTaskDelay(pdMS_TO_TICKS(1500)); // Give time for the message to be displayed
-                xQueueSend(ui_event_queue, &reopen_event, 0);
-                ESP_LOGI(TAG, "Network open, add devices...");
-                open_network(180); // Open for 3 minutes
             }
             break;
         }
