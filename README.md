@@ -14,13 +14,15 @@ e.g.
 ~~~
  . ~/esp/esp-idf/export.sh
  ~~~
+
+   so you have access to the build tools, or just open an esp-idf terminal using the esp-idf extension in vscode. 
+ Then, from this terminal
  ~~~
 idf.py set-target esp32c6 
 ~~~
 ~~~
 idf.py build flash monitor
 ~~~
-  into a terminal so you have access to the build tools, or just open an esp-idf terminal using the esp-idf extension in vscode. 
 
 Set up on a breadboard to test, you will need (apart from the [esp32c6 touch (scroll down for pinout)](https://www.waveshare.com/esp32-c6-lcd-1.9.htm)) :- 
 
