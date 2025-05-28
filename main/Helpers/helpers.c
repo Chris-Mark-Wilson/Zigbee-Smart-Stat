@@ -4,7 +4,7 @@
 #include "esp_zigbee_core.h"
 #include "esp_log.h"
 
-#define REJOIN_THRESHOLD_MS 5000
+#define REJOIN_THRESHOLD_MS 30000
 
 void show_stored_devices(void)
 {
@@ -133,7 +133,27 @@ bool device_exists(uint16_t short_addr)
             // Check if device was seen recently
             if ((now - stored_devices[i].last_seen) > REJOIN_THRESHOLD_MS)
             {
-                ESP_LOGI("device_exits", "Device 0x%04x expired, treating as new join", short_addr);
+                // Remove device by shifting remaining elements
+                if (i < stored_device_count - 1) {
+                    // Use memcpy for better performance with structs
+                    memcpy(&stored_devices[i], 
+                           &stored_devices[i + 1], 
+                           sizeof(zigbee_device_t) * (stored_device_count - i - 1));
+                }
+                stored_device_count--;
+                if(stored_devices[i].type == DEVICE_TYPE_TRV)
+                {
+                    trv_count--;
+                }
+                else if(stored_devices[i].type == DEVICE_TYPE_WINDOW_SENSOR)
+                {
+                    window_sensor_count--;
+                }
+                // Clear the last element to avoid dangling pointer
+                memset(&stored_devices[stored_device_count], 0, sizeof(zigbee_device_t));
+                // Log the removal
+                ESP_LOGI("device_exists", "Device 0x%04x expired and removed, new count: %d", 
+                         short_addr, stored_device_count);
                 return false;
             }
             return true;

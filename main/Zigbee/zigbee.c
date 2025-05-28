@@ -468,20 +468,43 @@ void zigbee_signal_handler(esp_zb_app_signal_t *signal_struct)
                 vTaskDelay(SHORT_DELAY);
                 if (load_devices_from_nvs() == ESP_OK)
                 {
-                    ui_event_t loaded_event = {
-                        .target_screen = SCREEN_BOOT,
-                        .message = "Devices loaded from memory"};
-                    xQueueSend(ui_event_queue, &loaded_event, 0);
-                    ESP_LOGI(TAG, "Devices loaded from NVS");
-                     vTaskDelay(SHORT_DELAY);
-                     close_network(); // Close network after loading devices
-                    ui_event_t close_event = {
-                        .target_screen = SCREEN_BOOT,
-                        .message = "Starting thermostat"};
-                    xQueueSend(ui_event_queue, &close_event, 0);
-                    vTaskDelay(SHORT_DELAY); // Give time for the message to be displayed
-                    ui_switch_screen(SCREEN_MAIN); // Switch to main screen
-                    ESP_LOGI(TAG, "Network closed, returning to main screen");
+                    if (trv_count == 0)
+                    {
+                        ESP_LOGW(TAG, "No TRVs found in NVS, opening network for pairing");
+                        ui_event_t no_trv_event = {
+                            .target_screen = SCREEN_BOOT,
+                            .message = "No TRVs found"};
+                        xQueueSend(ui_event_queue, &no_trv_event, 0);
+                        vTaskDelay(SHORT_DELAY);
+
+                        ui_event_t reopen_event = {
+                            .target_screen = SCREEN_BOOT,
+                            .message = PAIRING_MODE_UI_MESSAGE};
+                        vTaskDelay(LONG_DELAY); // Give time for the message to be displayed
+                        xQueueSend(ui_event_queue, &reopen_event, 0);
+                        ESP_LOGI(TAG, "Network open, add devices...");
+
+                        open_network(180); // Open for 3 minutes
+                    }
+                    else
+                    {
+                        ESP_LOGI(TAG, "TRVs found in NVS, proceeding to main screen");
+
+                        ui_event_t loaded_event = {
+                            .target_screen = SCREEN_BOOT,
+                            .message = "Devices loaded from memory"};
+                        xQueueSend(ui_event_queue, &loaded_event, 0);
+                        ESP_LOGI(TAG, "Devices loaded from NVS including at least 1 trv");
+                        vTaskDelay(SHORT_DELAY);
+                        close_network(); // Close network after loading devices
+                        ui_event_t close_event = {
+                            .target_screen = SCREEN_BOOT,
+                            .message = "Starting thermostat"};
+                        xQueueSend(ui_event_queue, &close_event, 0);
+                        vTaskDelay(SHORT_DELAY);       // Give time for the message to be displayed
+                        ui_switch_screen(SCREEN_MAIN); // Switch to main screen
+                        ESP_LOGI(TAG, "Network closed, returning to main screen");
+                    }
                 }
                 else
                 {
