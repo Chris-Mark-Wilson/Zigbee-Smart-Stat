@@ -35,9 +35,7 @@ bool g_presence_detected = false; // Global presence state
 bool g_trv_state = false;         // Track TRV state
 
 // Temperature control variables (in hundredths of degrees)
-int16_t g_target_temp = 2000; // 20.00°C
-int16_t g_min_temp = 1600;    // 16.00°C
-int16_t g_max_temp = 2400;    // 24.00°C
+
 
 #if defined ZB_ED_ROLE
 #error Define ZB_COORDINATOR_ROLE in idf.py menuconfig to compile source code.
@@ -433,26 +431,12 @@ static esp_zb_ep_list_t *create_endpoints(esp_zb_thermostat_cfg_t *thermostat)
 
 static void zigbee_task(void *pvParameters)
 {
-    static SemaphoreHandle_t settings_complete = NULL;
-    settings_complete = xSemaphoreCreateBinary();//create traffic light red
-    settings_register_callback(settings_complete_cb, settings_complete);
+    
 
-    //attempt to load settings from nvs
-    if(load_settings_from_nvs() != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to load settings from NVS");
-        ui_switch_screen(SCREEN_SETTINGS);//save button will release the semaphore with new settings, cancel will release with default settings
-        // Wait for settings to be saved or cancelled
-        ESP_LOGI(TAG, "Waiting for settings to be saved or cancelled");
-        xSemaphoreTake(settings_complete, portMAX_DELAY); // Wait here for settings
-        ESP_LOGI(TAG, "Settings saved or cancelled, continuing initialization");
-    } else {
-    ESP_LOGI(TAG, "Settings loaded from NVS");
-    xSemaphoreGive(settings_complete); // Signal that settings are loaded
-    //program flow will continue from this point
-       
-}
 
-    xSemaphoreTake(settings_complete, portMAX_DELAY); // Wait here for settings
+   
+
+    ESP_LOGW("ZIGBEE TASK semaphore", "passed semaphore, continuing initialization"); 
 
     ui_switch_screen(SCREEN_BOOT);
     char settings_message[100];
@@ -470,7 +454,7 @@ static void zigbee_task(void *pvParameters)
     xQueueSend(ui_event_queue, &event, portMAX_DELAY);
          vTaskDelay(LONG_DELAY);
 
-ESP_LOGI("Settings debug", "Settings loaded: Target High Temp: %.1f, Target Low Temp: %.1f, Range Limit: %.1f",
+ESP_LOGW("ZIGBEE TASK SETTINGS DEBUG", "Settings loaded: Target High Temp: %d, Target Low Temp: %d, Range Limit: %d",
              g_target_high_temp, g_target_low_temp, g_range_limit);
 
 
@@ -512,7 +496,7 @@ static void hmmd_read_task(void *arg)
     uint8_t data[128];
     char *range_str;
 
-    ESP_LOGI(TAG, "HMMD task started with initial range limit: %d m", g_range_limit);
+    ESP_LOGI("HMMD READ TASK", "HMMD task started with initial range limit: %d m", g_range_limit);
 
     while (1)
     {
@@ -616,17 +600,7 @@ void app_main(void)
 
     // LCD_Init();
     LVGL_Init();
-    esp_err_t ret = hmmd_uart_init();
-    if (ret != ESP_OK)
-    {
-        ESP_LOGE(TAG, "Failed to initialize HMMD UART");
-        return;
-    }
-    else
-    {
-        ESP_LOGI(TAG, "HMMD UART initialized successfully");
-        g_hmmd_initialised = true;
-    }
+
 
     // Create UI event queue first
     ui_event_queue = xQueueCreate(10, sizeof(ui_event_t));
@@ -642,6 +616,37 @@ void app_main(void)
     // Create tasks after queue is initialized
     xTaskCreate(lvgl_task, "lvgl_handler", 4096, NULL, 6, NULL);
     xTaskCreate(ui_update_task, "ui_update", 4096, NULL, 5, NULL);
+
+    static SemaphoreHandle_t settings_complete = NULL;
+    settings_complete = xSemaphoreCreateBinary();//create traffic light red
+    settings_register_callback(settings_complete_cb, settings_complete);
+
+    //attempt to load settings from nvs
+    if(load_settings_from_nvs() != ESP_OK) {
+            ESP_LOGE("MAIN semaphore", "Failed to load settings from NVS");
+        ui_switch_screen(SCREEN_SETTINGS);//save button will release the semaphore with new settings, cancel will release with default settings
+        // Wait for settings to be saved or cancelled
+        ESP_LOGI("MAIN TASK semaphore", "Waiting for settings to be saved or cancelled");
+        xSemaphoreTake(settings_complete, portMAX_DELAY); // Wait here for settings
+        ESP_LOGI("MAIN semaphore", "Settings saved or cancelled, continuing initialization");
+    } else {
+    ESP_LOGI(TAG, "Settings loaded from NVS");
+    
+       
+}
+
+    esp_err_t ret = hmmd_uart_init();
+    if (ret != ESP_OK)
+    {
+        ESP_LOGE("UART init", "Failed to initialize HMMD UART");
+        return;
+    }
+    else
+    {
+        ESP_LOGI("UART init", "HMMD UART initialized successfully");
+        g_hmmd_initialised = true;
+    }
+
     xTaskCreate(zigbee_task, "Zigbee_main", 4096, NULL, 5, NULL);
     xTaskCreate(hmmd_read_task, "HMMD_read", 2048, NULL, 4, NULL);
     xTaskCreate(dht_sensor_task, "DHT_sensor", 2048, NULL, 4, NULL);

@@ -46,7 +46,6 @@ typedef struct
             lv_obj_t *low_temp_label;
             lv_obj_t *range_label;
             lv_obj_t *room_label;
-            lv_obj_t *save_button;
             lv_obj_t *cancel_button;
             lv_obj_t *settings_container; // Main container for settings
             lv_obj_t *save_btn;

@@ -18,13 +18,13 @@
 #define MAX_ROOMS 10 //max rooms in house, used for settings slider max value
 
 typedef void (*settings_callback_t)(SemaphoreHandle_t param);
-static settings_callback_t settings_callback;
-static SemaphoreHandle_t settings_callback_param;
+extern settings_callback_t settings_callback;
+extern SemaphoreHandle_t settings_callback_param;
 
-static uint8_t g_range_limit = 1;       // Initial range limit in meters
-static uint8_t g_target_high_temp = 21;  // Default high temp (17-21)
-static uint8_t g_target_low_temp = 16;   // Default low temp (13-16)
-static uint8_t g_room = 1; // Default room number (1-MAX_ROOMS)
+extern uint8_t g_range_limit;       // Range limit in meters
+extern uint8_t g_target_high_temp;  // High temp (17-21)
+extern uint8_t g_target_low_temp;   // Low temp (13-16)
+extern uint8_t g_room;              // Room number (1-MAX_ROOMS)
 
 void settings_complete_cb(SemaphoreHandle_t semaphore);
 bool save_settings(uint16_t room, uint16_t target_temp, uint16_t min_temp, uint16_t presence_range);

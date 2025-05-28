@@ -12,8 +12,8 @@
 
 #define TAG "SETTINGS"
 
-static settings_callback_t settings_callback = NULL;
-static SemaphoreHandle_t settings_callback_param = NULL;
+settings_callback_t settings_callback = NULL;
+SemaphoreHandle_t settings_callback_param = NULL;
 
 static struct
 {
@@ -22,9 +22,15 @@ static struct
     uint8_t presence_range;
     uint8_t room;
 } temp_settings;
+// Global settings with default values
+uint8_t g_range_limit = 1;        // Initial range limit in meters
+uint8_t g_target_high_temp = 21;  // Default high temp
+uint8_t g_target_low_temp = 16;   // Default low temp
+uint8_t g_room = 1;              // Default room number
 
 void settings_complete_cb(SemaphoreHandle_t semaphore)
 {
+    xSemaphoreGive(semaphore);
     // check if we have devices
     if (stored_device_count == 0)
     {
@@ -35,9 +41,12 @@ void settings_complete_cb(SemaphoreHandle_t semaphore)
             .message = "Settings saved, starting Zigbee network..."};
         xQueueSend(ui_event_queue, &event, portMAX_DELAY);
         vTaskDelay(SHORT_DELAY); // Give time for message to be displayed
+           ui_event_t return_event = {
+            .target_screen = SCREEN_BOOT,
+            .message = PAIRING_MODE_UI_MESSAGE};
+        xQueueSend(ui_event_queue, &return_event, portMAX_DELAY);
         ESP_LOGI("Settings_complete_cb", "Settings saved, starting Zigbee network...");
-        // This is called when the user finishes setting up or cancels settings
-        xSemaphoreGive(semaphore);
+        vTaskDelay(SHORT_DELAY); // Give time for message to be displayed
     }
     else
     {
@@ -49,11 +58,12 @@ void settings_complete_cb(SemaphoreHandle_t semaphore)
         xQueueSend(ui_event_queue, &event, portMAX_DELAY);
         vTaskDelay(SHORT_DELAY);       // Give time for message to be displayed
         ui_switch_screen(SCREEN_MAIN); // Switch back to boot screen
+     
     }
 }
 bool save_settings(uint16_t room, uint16_t target_temp, uint16_t min_temp, uint16_t presence_range)
 {
-    ESP_LOGI(TAG, "Saving settings: room: 0x%d, Target Temp: %d, Min Temp: %d, Range: %d",
+    ESP_LOGI(TAG, "Saving settings: room: %d, Target Temp: %d, Min Temp: %d, Range: %d",
              room, target_temp, min_temp, presence_range);
     esp_err_t err;
     nvs_handle_t nvs_handle;
@@ -61,7 +71,10 @@ bool save_settings(uint16_t room, uint16_t target_temp, uint16_t min_temp, uint1
     g_room = room;
     g_target_high_temp = target_temp;
     g_target_low_temp = min_temp;
-    g_range_limit = presence_range; // Convert to cm for storage
+    g_range_limit = presence_range; 
+
+    ESP_LOGI("SAVE SETTINGS","GLOBALS: room: %d, high temp: %d, low temp: %d, range limit: %d",
+             g_room, g_target_high_temp, g_target_low_temp, g_range_limit);
 
     err = nvs_open("zigbee", NVS_READWRITE, &nvs_handle);
     if (err != ESP_OK)
@@ -70,8 +83,8 @@ bool save_settings(uint16_t room, uint16_t target_temp, uint16_t min_temp, uint1
         return false;
     }
 
-    // Save channel mask
-    err = nvs_set_u32(nvs_handle, "room", room);
+    // Save room number
+    err = nvs_set_u16(nvs_handle, "room", room);
     if (err != ESP_OK)
     {
         ESP_LOGE(TAG, "Error saving room number: %s", esp_err_to_name(err));
@@ -95,7 +108,7 @@ bool save_settings(uint16_t room, uint16_t target_temp, uint16_t min_temp, uint1
     err = nvs_set_u16(nvs_handle, "range_limit", presence_range);
     if (err != ESP_OK)
     {
-        ESP_LOGE(TAG, "Error saving max temp: %s", esp_err_to_name(err));
+        ESP_LOGE(TAG, "Error saving range limit: %s", esp_err_to_name(err));
     }
 
     // Commit changes
@@ -109,11 +122,6 @@ bool save_settings(uint16_t room, uint16_t target_temp, uint16_t min_temp, uint1
 
     nvs_close(nvs_handle);
 
-    // If a callback is registered for settings completion, call it
-    if (settings_callback && settings_callback_param)
-    {
-        settings_callback(settings_callback_param);
-    }
 
     return true;
 }
@@ -173,18 +181,22 @@ void settings_save_btn_cb(lv_event_t *e)
     ESP_LOGI(TAG, "save_btn_cb high temp: %d, low temp: %d, range: %d, room: %d",
              temp_settings.high_temp, temp_settings.low_temp,
              temp_settings.presence_range, temp_settings.room);
-    // Save temporary settings to globals and NVS
-    g_target_high_temp = temp_settings.high_temp;
-    g_target_low_temp = temp_settings.low_temp;
-    g_range_limit = temp_settings.presence_range;
-    g_room = temp_settings.room;
 
-    save_settings(temp_settings.room,
-                  temp_settings.high_temp,
-                  temp_settings.low_temp,
-                  temp_settings.presence_range);
+             // Save the temporary settings to NVS
 
-    ui_switch_screen(SCREEN_BOOT);
+     if (save_settings(temp_settings.room,
+                     temp_settings.high_temp,
+                     temp_settings.low_temp,
+                     temp_settings.presence_range))
+    {
+        // Only call the completion callback if save was successful
+        if (settings_callback) {
+            ESP_LOGI("SETTINGS_SAVE_BTN_CB", "Settings saved successfully");
+            settings_callback(settings_callback_param);
+        }
+    }
+
+    
 }
 
 void settings_cancel_btn_cb(lv_event_t *e)
@@ -198,7 +210,7 @@ void settings_cancel_btn_cb(lv_event_t *e)
     ui_switch_screen(SCREEN_BOOT);
 }
 
-// Add this function to register the callbacks with the UI elements
+//  register the callbacks with the UI elements
 void settings_init_callbacks(void)
 {
     // Initialize temp settings with current values
@@ -254,7 +266,7 @@ esp_err_t load_settings_from_nvs(void)
     }
     if (nvs_get_u16(nvs_handle, "range_limit", &temp) == ESP_OK)
     {
-        g_range_limit = temp / 100.0f; // Convert back to meters
+        g_range_limit = temp; // Convert back to meters
     }
 
     nvs_close(nvs_handle);

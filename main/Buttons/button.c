@@ -138,6 +138,7 @@ void button_pressed_cb(button_event_t event)
 
     case BUTTON_RELEASED:
     {
+        ESP_LOGI(TAG, "current screen %d, network open %s", current_screen, network_open? "true" : "false");
         if (current_screen == SCREEN_BOOT && network_open)
         {
             //check to see if we have at least 1 trv stored
@@ -177,7 +178,7 @@ void button_pressed_cb(button_event_t event)
                 show_stored_devices();
                 // Toggle between min and max temperature and corresponding mode
                 g_trv_state = !g_trv_state;
-                g_target_temp = g_trv_state ? g_max_temp : g_min_temp;
+            
                 if (g_trv_state)
                 {
                     turn_trvs_on();
@@ -197,12 +198,7 @@ void button_pressed_cb(button_event_t event)
                 display_network_key();
             }
             ui_switch_screen(SCREEN_SETTINGS);  
-        } else if (current_screen == SCREEN_SETTINGS) {
-            // If in settings screen, just return to main screen
-            ui_switch_screen(SCREEN_MAIN);
-        } else {
-            ESP_LOGW(TAG, "Button released in unexpected screen: %d", current_screen);
-        }
+        } 
         
         break;
     }

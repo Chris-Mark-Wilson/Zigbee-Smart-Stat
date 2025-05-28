@@ -254,8 +254,7 @@ static void create_settings_screen(void) {
     g_screens[SCREEN_SETTINGS].settings.save_btn = lv_btn_create(button_container);
     lv_obj_set_size(g_screens[SCREEN_SETTINGS].settings.save_btn, LV_PCT(45), 40);
     lv_obj_set_style_bg_color(g_screens[SCREEN_SETTINGS].settings.save_btn, lv_color_make(0, 150, 0), 0);
-    lv_obj_add_event_cb(g_screens[SCREEN_SETTINGS].settings.save_btn, 
-                        settings_save_btn_cb, LV_EVENT_CLICKED, NULL);
+  
     
     // Create cancel button
     g_screens[SCREEN_SETTINGS].settings.cancel_btn = lv_btn_create(button_container);
