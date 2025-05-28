@@ -6,7 +6,10 @@
 
 ### instructions for use..
 
-Fork and clone, open in esp_idf
+Fork and clone, 
+
+Using vscode and Espressifs ESP-IDF extension, download and install the [esp-idf](https://docs.espressif.com/projects/esp-idf/en/stable/esp32c6/get-started/index.html). Follow the instructions. 
+open in esp_idf
 
 Set up on a breadboard to test, you will need (apart from the [esp32c6 touch (scroll down for pinout)](https://www.waveshare.com/esp32-c6-lcd-1.9.htm)) :- 
 
