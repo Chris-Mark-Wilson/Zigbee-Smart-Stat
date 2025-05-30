@@ -53,7 +53,7 @@
 #define MAX_TRV_DEVICES         2
 #define MAX_WINDOW_SENSORS      3
 #define MAX_DEVICE_NAME_LENGTH  32
-#define PAIRING_MODE_UI_MESSAGE "Pairing Mode Enabled.\n Please pair your devices."
+#define PAIRING_MODE_UI_MESSAGE "Pairing\n\nPlease put devices into pairing mode"
 
 // Device type enumeration
 typedef enum {

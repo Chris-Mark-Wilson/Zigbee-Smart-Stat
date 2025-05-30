@@ -11,7 +11,7 @@ void show_stored_devices(void)
 
     for (uint8_t i = 0; i < stored_device_count; i++)
     {
-        ESP_LOGI("DEVICES", "Device %d: %s (0x%04x)", i, stored_devices[i].name, stored_devices[i].short_addr);
+        ESP_LOGI("DEVICES", "Device %d: %s (0x%04x), type: %s", i, stored_devices[i].name, stored_devices[i].short_addr,stored_devices[i].type == DEVICE_TYPE_TRV ? "TRV" : "Window Sensor");
     }
 }
   

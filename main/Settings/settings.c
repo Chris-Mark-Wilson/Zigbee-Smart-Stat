@@ -23,8 +23,8 @@ static struct
     uint8_t room;
 } temp_settings;
 // Global settings with default values
-uint8_t g_range_limit = 1;        // Initial range limit in meters
-uint8_t g_target_high_temp = 21;  // Default high temp
+uint8_t g_range_limit = 3;        // Initial range limit in meters
+uint8_t g_target_high_temp = 20;  // Default high temp
 uint8_t g_target_low_temp = 16;   // Default low temp
 uint8_t g_room = 1;              // Default room number
 
@@ -40,11 +40,7 @@ void settings_complete_cb(SemaphoreHandle_t semaphore)
             .target_screen = SCREEN_BOOT,
             .message = "Settings saved, starting Zigbee network..."};
         xQueueSend(ui_event_queue, &event, portMAX_DELAY);
-        vTaskDelay(SHORT_DELAY); // Give time for message to be displayed
-           ui_event_t return_event = {
-            .target_screen = SCREEN_BOOT,
-            .message = PAIRING_MODE_UI_MESSAGE};
-        xQueueSend(ui_event_queue, &return_event, portMAX_DELAY);
+    
         ESP_LOGI("Settings_complete_cb", "Settings saved, starting Zigbee network...");
         vTaskDelay(SHORT_DELAY); // Give time for message to be displayed
     }
@@ -233,6 +229,7 @@ void settings_init_callbacks(void)
                         settings_save_btn_cb, LV_EVENT_CLICKED, NULL);
     lv_obj_add_event_cb(g_screens[SCREEN_SETTINGS].settings.cancel_btn,
                         settings_cancel_btn_cb, LV_EVENT_CLICKED, NULL);
+ 
 }
 
 esp_err_t load_settings_from_nvs(void)

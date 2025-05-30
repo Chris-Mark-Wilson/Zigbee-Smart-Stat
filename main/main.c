@@ -548,10 +548,10 @@ static void ui_update_task(void *pvParameters)
             switch (event.target_screen)
             {
             case SCREEN_BOOT:
-            char devices_found[20];
-                snprintf(devices_found, sizeof(devices_found), "Paired: %d", stored_device_count);
+            char header_label[40];
+                snprintf(header_label, sizeof(header_label), "TRV's: %d\nWindows: %d", trv_count,window_sensor_count);
 
-                ui_update_boot_status(event.message,devices_found);
+                ui_update_boot_status(event.message,header_label);
                                       
                 break;
             case SCREEN_MAIN:

@@ -22,7 +22,9 @@ typedef struct
         {
             lv_obj_t *status_label;
             lv_obj_t *header_label;
-        } boot;
+            lv_obj_t *button_container;
+            lv_obj_t *action_button; // Button to switch to main screen
+            } boot;
 
         // Main screen widgets
         struct
@@ -68,6 +70,7 @@ void ui_init_screens(void);
 void ui_switch_screen(screen_id_t screen);
 void ui_update_boot_status(const char *status, const char *header);
 void ui_update_main_screen(float temp, float humidity, bool presence, bool window_open);
-void ui_update_settings(uint8_t high_temp, uint8_t low_temp, float presence_range, uint8_t room);
-
+void ui_update_settings(uint8_t high_temp, uint8_t low_temp, uint8_t presence_range, uint8_t room);
+void show_action_button(bool show);
+void boot_action_btn_cb(lv_event_t *e);
 #endif
