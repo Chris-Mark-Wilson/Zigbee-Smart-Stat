@@ -84,45 +84,50 @@ void esp_zb_zcl_config_report_cb(esp_zb_zcl_command_send_status_message_t messag
 
 static void bind_trv_cb(esp_zb_zdp_status_t zdo_status, void *user_ctx)
 {
-    esp_zb_zdo_bind_req_param_t *bind_req = (esp_zb_zdo_bind_req_param_t *)user_ctx;
+  zigbee_device_t *device = (zigbee_device_t *)user_ctx;
 
     if (zdo_status == ESP_ZB_ZDP_STATUS_SUCCESS)
     {
-        /* Local binding succeeds */
-        // if (bind_req->req_dst_addr == esp_zb_get_short_address())
-        // {
-            ESP_LOGI(TAG, "Trv bound to controller from address(0x%x) on trv endpoint(%d)",
-                     bind_req->req_dst_addr, bind_req->dst_endp);
+       
+          
 
-        //     // /* Read peer Manufacture Name & Model Identifier */
-        //     // esp_zb_zcl_read_attr_cmd_t read_req = {0};
-        //     // read_req.address_mode = ESP_ZB_APS_ADDR_MODE_16_ENDP_PRESENT;
-        //     // read_req.zcl_basic_cmd.src_endpoint = HA_THERMOSTAT_ENDPOINT;
-        //     // read_req.zcl_basic_cmd.dst_endpoint = trv.endpoint;
-        //     // read_req.zcl_basic_cmd.dst_addr_u.addr_short = trv.short_addr;
-        //     // read_req.clusterID = ESP_ZB_ZCL_CLUSTER_ID_BASIC;
+        // Prepare the device structure
+        zigbee_device_t new_device = {
+            .type = DEVICE_TYPE_TRV,
+            .short_addr =  device->short_addr, // Use the short address from user_ctx
+            .endpoint = device->endpoint, // Use the endpoint from user_ctx
+            .last_seen = esp_timer_get_time(),
+        };
+        memcpy(new_device.ieee_addr, device->ieee_addr, sizeof(esp_zb_ieee_addr_t));
+        device_type_t dev_type= DEVICE_TYPE_TRV;
+        snprintf(new_device.name, MAX_DEVICE_NAME_LENGTH, "%s_%d",
+                "TRV" ,
+                ++trv_count);//generate a new name
 
-        //     uint16_t attributes[] = {
-        //         ESP_ZB_ZCL_ATTR_BASIC_MANUFACTURER_NAME_ID,
-        //         ESP_ZB_ZCL_ATTR_BASIC_MODEL_IDENTIFIER_ID,
-        //     };
-        //     read_req.attr_number = ARRAY_LENGTH(attributes);
-        //     read_req.attr_field = attributes;
+        // Save the device to NVS
 
-        //     esp_zb_zcl_read_attr_cmd_req(&read_req);
-        // }
-        // if (bind_req->req_dst_addr == trv.short_addr)
-        // {
-        //     ESP_LOGI(TAG, "Controller bound to trv from sensor address(0x%x) on sensor endpoint(%d)",
-        //              trv.short_addr, trv.endpoint);
-        // }
-        free(bind_req);
+        if (save_device_to_nvs(&new_device) == ESP_OK)
+        {
+            ui_event_t event = {
+                .target_screen = SCREEN_BOOT,
+                .message = "TRV saved successfully"};
+            xQueueSend(ui_event_queue, &event, 0);
+            ESP_LOGI(TAG, "Device saved as %s", new_device.name);
+        }
+
+        //show action button (finished pairing button)
+        show_action_button(true);
+        ui_event_t event = {
+            .target_screen = SCREEN_BOOT,
+            .message = "TRV bound successfully"};
+        xQueueSend(ui_event_queue, &event, 0);
+        vTaskDelay(SHORT_DELAY);
+        free(device);
+
     }
     else
     {
-        /* Bind failed, maybe retry the binding ? */
-
-        // esp_zb_zdo_device_bind_req(bind_req, bind_cb, bind_req);
+        ESP_LOGW(TAG, "Binding request failed with status: 0x%x", zdo_status);
     }
 }
 static void find_trv_cb(esp_zb_zdp_status_t zdo_status, uint16_t peer_addr, uint8_t peer_endpoint, void *user_ctx)
@@ -143,21 +148,7 @@ static void find_trv_cb(esp_zb_zdp_status_t zdo_status, uint16_t peer_addr, uint
         ESP_LOGI("FIND TRV CALLBACK", "Device identified as TRV");
         ESP_LOGI("FIND TRV CALLBACK", "Found TRV device at address 0x%04x, endpoint %d", peer_addr, peer_endpoint);
 
-        // // Store device info with correct address
-        // zigbee_device_t *trv = (trv_device_params_t *)user_ctx;
-        // if (!sensor)
-        // {
-        //     ESP_LOGE(TAG, "Invalid user context");
-        //     return;
-        // }
-        // sensor->endpoint = peer_endpoint;
-        // sensor->short_addr = peer_addr;
-        // // esp_zb_ieee_address_by_short(sensor->short_addr, sensor->ieee_addr);
-
-        // /* 1. Send binding request to the trv */
-        // esp_zb_zdo_bind_req_param_t *bind_req = (esp_zb_zdo_bind_req_param_t *)calloc(1, sizeof(esp_zb_zdo_bind_req_param_t));
-
-        // bind_req->req_dst_addr = peer_addr;
+     
 
 
 
@@ -176,34 +167,29 @@ static void find_trv_cb(esp_zb_zdp_status_t zdo_status, uint16_t peer_addr, uint
         memcpy(bind_req->dst_address_u.addr_long, user_ctx, sizeof(esp_zb_ieee_addr_t));
         bind_req->dst_endp = peer_endpoint;
 
-        ESP_LOGI(TAG, "Binding coordinator to trv (send commands)");
-        esp_zb_zdo_device_bind_req(bind_req, bind_trv_cb, bind_req);
+        //create user_ctx for callback
+    // Properly allocate memory for the device
+zigbee_device_t *device_ctx = (zigbee_device_t *)malloc(sizeof(zigbee_device_t));
+if (!device_ctx) {
+    ESP_LOGE(TAG, "Failed to allocate memory for device context");
+    free(bind_req);
+    return;
+}
 
-        /* 3. save device to nvs */
+// Initialize the device
+device_ctx->short_addr = peer_addr;
+device_ctx->endpoint = peer_endpoint;
+device_ctx->type = DEVICE_TYPE_TRV;
 
-        device_type_t dev_type = DEVICE_TYPE_TRV;
+memset(device_ctx->ieee_addr, 0, sizeof(esp_zb_ieee_addr_t));  // Zero out array
+memcpy(device_ctx->ieee_addr, user_ctx, sizeof(esp_zb_ieee_addr_t));  // Copy IEEE address
 
-        // Prepare the device structure
-        zigbee_device_t new_device = {
-            .type = DEVICE_TYPE_TRV,
-            .short_addr = peer_addr,
-            .endpoint = peer_endpoint,
-        };
-        memcpy(new_device.ieee_addr, user_ctx, sizeof(esp_zb_ieee_addr_t));
+ESP_LOGI(TAG, "Binding coordinator to trv (send commands)");
+esp_zb_zdo_device_bind_req(bind_req, bind_trv_cb, device_ctx);
 
-        snprintf(new_device.name, MAX_DEVICE_NAME_LENGTH, "%s_%d",
-                 dev_type == DEVICE_TYPE_TRV ? "TRV" : "WINDOW",
-                 dev_type == DEVICE_TYPE_TRV ? ++trv_count : ++window_sensor_count);
+    
 
-        // Save the device to
-        if (save_device_to_nvs(&new_device) == ESP_OK)
-        {
-            ui_event_t event = {
-                .target_screen = SCREEN_BOOT,
-                .message = "Device paired successfully"};
-            xQueueSend(ui_event_queue, &event, 0);
-            ESP_LOGI(TAG, "Device saved as %s", new_device.name);
-        }
+       
     }
 }
 
@@ -679,38 +665,57 @@ void zigbee_signal_handler(esp_zb_app_signal_t *signal_struct)
         break;
 
     case ESP_ZB_ZDO_SIGNAL_DEVICE_UPDATE: // 0x30
-        ESP_LOGI(TAG, "Device update notification received");
+        ESP_LOGI("SIGNAL HANDLER zdo_signal_device_update", "Device update notification received");
 
         esp_zb_zdo_signal_device_update_params_t *update_params =
             (esp_zb_zdo_signal_device_update_params_t *)esp_zb_app_signal_get_params(p_sg_p);
 
-        ESP_LOGI("SIGNAL HANDLER - device update", "Device update notification received from %s",get_device_name( update_params->short_addr));
-        char status_message[64];
-        uint16_t status=update_params->status;
+            ESP_LOGI("SIGNAL HANDLER - device update", "Device update notification received from %s",get_device_name( update_params->short_addr));
+            
+            uint16_t status=update_params->status;
+        if(status == ESP_ZB_ZDO_STANDARD_DEV_UNSECURED_JOIN){
+            ESP_LOGI("SIGNAL HANDLER - device update", "Device %s joined network unsecured",get_device_name( update_params->short_addr));
+            // If the device is not in our list, just log it
+            ui_event_t event = {
+                .target_screen = SCREEN_BOOT,
+                .message = "Unsecure rejoin detected, please remove and replace batteries "};
+            xQueueSend(ui_event_queue, &event, 0);
+            vTaskDelay(SHORT_DELAY);
+            return; // Do not process further for unsecured join
+        } 
+    
+        char status_message[128];
+        // Check the status and prepare the message                                                                             
+ 
         if(status == ESP_ZB_ZDO_STANDARD_DEV_SECURED_REJOIN){
             sprintf(status_message, "Device %s rejoined network ",get_device_name( update_params->short_addr));
         } 
-        else if(status == ESP_ZB_ZDO_STANDARD_DEV_UNSECURED_JOIN){
-            sprintf(status_message, "Device %s rejoined unsecured ",get_device_name( update_params->short_addr));
-        } 
+       
         else if(status == ESP_ZB_ZDO_STANDARD_DEV_LEFT){
             sprintf(status_message, "Device %s left network ",get_device_name( update_params->short_addr));
         } 
         else if(status == ESP_ZB_ZDO_STANDARD_DEV_TC_REJOIN){
-            sprintf(status_message, "Device %s rejoined as TrustCentre ",get_device_name( update_params->short_addr));
+            sprintf(status_message, "Device %s rejoined as Trusted Device ",get_device_name( update_params->short_addr));
         } 
         else {
             sprintf(status_message, "Device %s unknown status %x",get_device_name( update_params->short_addr),status);
         }
 
         ESP_LOGI("SIGNAL HANDLER-device update", "%s", status_message);
+        if(current_screen==SCREEN_BOOT && network_open){
+              
           ui_event_t event = {
                     .target_screen = SCREEN_BOOT,
                     .message = ""};
                 strncpy(event.message, status_message, sizeof(event.message) - 1);
                 xQueueSend(ui_event_queue, &event, 0);
+                vTaskDelay(SHORT_DELAY);
+                strncpy(event.message, PAIRING_MODE_UI_MESSAGE, sizeof(event.message) - 1);
+                xQueueSend(ui_event_queue, &event, 0);
+          }
         
-        break;
+            break;
+          
 
     case ESP_ZB_NLME_STATUS_INDICATION: // 0x32
     {
@@ -888,7 +893,7 @@ void reset_device_cb(esp_zb_zdp_status_t zdo_status, void *user_ctx)
         vTaskDelay(SHORT_DELAY);
 
         zigbee_device_t *device = get_device_by_short_addr(short_address);
-        if(device->unpair_attempts < MAX_UNPAIR_ATTEMPTS){
+        if(device && device->unpair_attempts < MAX_UNPAIR_ATTEMPTS){
             ESP_LOGI(TAG, "Retrying unpair for device %s...", get_device_name(short_address));
             unpair_device(device->short_addr);
         } else {
@@ -896,7 +901,7 @@ void reset_device_cb(esp_zb_zdp_status_t zdo_status, void *user_ctx)
             devices_left++;
         }
 
-        if(devices_left == stored_device_count){
+        if(devices_left == stored_device_count || stored_device_count == 0){
             restart();
         }
     }

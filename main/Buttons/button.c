@@ -197,7 +197,7 @@ void button_pressed_cb(button_event_t event)
                 // Display network key even if no devices are paired
                 display_network_key();
             }
-            ui_switch_screen(SCREEN_SETTINGS);  
+            
         } 
         
         break;

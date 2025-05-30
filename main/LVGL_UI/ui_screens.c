@@ -23,8 +23,8 @@ static void create_boot_screen(void) {
     // Create header container (20% of screen height)
     lv_obj_t *header = lv_obj_create(screen);
     lv_obj_remove_style_all(header);
-    lv_obj_set_size(header, LV_PCT(100), LV_PCT(20));
-    lv_obj_align(header, LV_ALIGN_TOP_MID, 0, 0);
+    lv_obj_set_size(header, LV_PCT(100), LV_PCT(15));
+    lv_obj_align(header, LV_ALIGN_TOP_MID, 0, 10);
     
 
         // Add header label and store reference
@@ -33,21 +33,19 @@ static void create_boot_screen(void) {
                             &lv_font_montserrat_24, 0);
     lv_obj_set_style_text_align(g_screens[SCREEN_BOOT].boot.header_label, 
                             LV_TEXT_ALIGN_CENTER, 0);
-    lv_label_set_text(g_screens[SCREEN_BOOT].boot.header_label, "Paired: 0");
+
     lv_obj_center(g_screens[SCREEN_BOOT].boot.header_label);
     lv_obj_set_style_text_color(g_screens[SCREEN_BOOT].boot.header_label, lv_color_make(0, 0, 0), 0);
     lv_obj_set_style_text_opa(g_screens[SCREEN_BOOT].boot.header_label, LV_OPA_COVER, 0);
     
     
-    // Create container for status label (remaining 80% of screen)
+    // Create container for status label ( 65% of screen)
     lv_obj_t *content = lv_obj_create(screen);
     lv_obj_remove_style_all(content);
     lv_obj_set_size(content, LV_PCT(100), LV_PCT(80));
-    lv_obj_align(content, LV_ALIGN_BOTTOM_MID, 0, 0);
+    lv_obj_align(content, LV_ALIGN_CENTER, 0, 0);
        
-  
-
-    
+      
     // Create status label inside content container
     g_screens[SCREEN_BOOT].boot.status_label = lv_label_create(content);
     lv_obj_set_align(g_screens[SCREEN_BOOT].boot.status_label, LV_ALIGN_CENTER);
@@ -57,6 +55,34 @@ static void create_boot_screen(void) {
     lv_label_set_text(g_screens[SCREEN_BOOT].boot.status_label, "Initializing...");
     lv_obj_set_style_text_color(g_screens[SCREEN_BOOT].boot.status_label, lv_color_make(0, 0, 0), 0);
     lv_obj_set_style_text_opa(g_screens[SCREEN_BOOT].boot.status_label, LV_OPA_COVER, 0);
+
+    //create container for button at bottom of screen
+    lv_obj_t *button_container = lv_obj_create(screen);
+    lv_obj_remove_style_all(button_container);
+    lv_obj_set_size(button_container, LV_PCT(100), LV_PCT(15));
+    lv_obj_align(button_container, LV_ALIGN_BOTTOM_MID, 0, -10);
+    //hide the button container initially
+       // Store the button container reference first
+    g_screens[SCREEN_BOOT].boot.button_container = button_container;
+     lv_obj_add_flag(g_screens[SCREEN_BOOT].boot.button_container, LV_OBJ_FLAG_HIDDEN);
+    // Create action button
+    lv_obj_t *action_button = lv_btn_create(button_container);
+    lv_obj_set_size(action_button, LV_PCT(80), LV_PCT(80));
+    lv_obj_align(action_button, LV_ALIGN_CENTER, 0, 0);
+    lv_obj_set_style_radius(action_button, 10, 0);
+    lv_obj_set_style_bg_color(action_button, lv_color_make(255, 255, 255), 0);
+    // Store the button reference in the screen structure
+    g_screens[SCREEN_BOOT].boot.action_button = action_button;
+    //add callback for button
+       lv_obj_add_event_cb(g_screens[SCREEN_BOOT].boot.action_button,
+                        boot_action_btn_cb, LV_EVENT_CLICKED, NULL);
+
+    //create label for action button
+    lv_obj_t *action_label = lv_label_create(action_button);
+    lv_label_set_text(action_label, "Finished");
+    lv_obj_set_style_text_font(action_label, &lv_font_montserrat_18, 0);
+    lv_obj_set_style_text_color(action_label, lv_color_make(0, 0, 0), 0);
+    // lv_obj_set_style_text_opa(action_label, LV_OPA_TRANSP, 0);
 }
 
 static void create_main_screen(void) {
@@ -142,7 +168,7 @@ static void create_settings_screen(void) {
     // Create main container for settings
     lv_obj_t *settings_container = lv_obj_create(screen);
     lv_obj_remove_style_all(settings_container);
-    lv_obj_set_size(settings_container, LV_PCT(90), LV_PCT(70));
+    lv_obj_set_size(settings_container, LV_PCT(100), LV_PCT(90));
     lv_obj_align(settings_container, LV_ALIGN_TOP_MID, 0, 10);
     lv_obj_set_flex_flow(settings_container, LV_FLEX_FLOW_COLUMN);
     lv_obj_set_flex_align(settings_container, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
@@ -151,8 +177,9 @@ static void create_settings_screen(void) {
     // High temperature section
     lv_obj_t *high_temp_container = lv_obj_create(settings_container);
     lv_obj_remove_style_all(high_temp_container);
-    lv_obj_set_size(high_temp_container, LV_PCT(100), LV_SIZE_CONTENT);
+    lv_obj_set_size(high_temp_container, LV_PCT(90), LV_PCT(15));
     lv_obj_set_flex_flow(high_temp_container, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(high_temp_container, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
     
     // High temperature label styling
     g_screens[SCREEN_SETTINGS].settings.high_temp_label = lv_label_create(high_temp_container);
@@ -163,16 +190,18 @@ static void create_settings_screen(void) {
     lv_label_set_text(g_screens[SCREEN_SETTINGS].settings.high_temp_label, buf);
     
     g_screens[SCREEN_SETTINGS].settings.high_temp_slider = lv_slider_create(high_temp_container);
-    lv_obj_set_width(g_screens[SCREEN_SETTINGS].settings.high_temp_slider, LV_PCT(100));
+    lv_obj_set_width(g_screens[SCREEN_SETTINGS].settings.high_temp_slider, LV_PCT(90));
     lv_slider_set_range(g_screens[SCREEN_SETTINGS].settings.high_temp_slider, 17, 22);
+    lv_slider_set_value(g_screens[SCREEN_SETTINGS].settings.high_temp_slider, g_target_high_temp, LV_ANIM_OFF);
     lv_obj_add_event_cb(g_screens[SCREEN_SETTINGS].settings.high_temp_slider, 
                     settings_slider_event_cb, LV_EVENT_VALUE_CHANGED, NULL);
 
     // Low temperature section
     lv_obj_t *low_temp_container = lv_obj_create(settings_container);
     lv_obj_remove_style_all(low_temp_container);
-    lv_obj_set_size(low_temp_container, LV_PCT(100), LV_SIZE_CONTENT);
+    lv_obj_set_size(low_temp_container, LV_PCT(90), LV_PCT(15));
     lv_obj_set_flex_flow(low_temp_container, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(low_temp_container, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
     
     // Low temperature label styling
     g_screens[SCREEN_SETTINGS].settings.low_temp_label = lv_label_create(low_temp_container);
@@ -183,38 +212,42 @@ static void create_settings_screen(void) {
     lv_label_set_text(g_screens[SCREEN_SETTINGS].settings.low_temp_label, buf);
     
     g_screens[SCREEN_SETTINGS].settings.low_temp_slider = lv_slider_create(low_temp_container);
-    lv_obj_set_width(g_screens[SCREEN_SETTINGS].settings.low_temp_slider, LV_PCT(100));
+    lv_obj_set_width(g_screens[SCREEN_SETTINGS].settings.low_temp_slider, LV_PCT(90));
     lv_slider_set_range(g_screens[SCREEN_SETTINGS].settings.low_temp_slider, 13, 20);
-        lv_obj_add_event_cb(g_screens[SCREEN_SETTINGS].settings.low_temp_slider, 
+    lv_slider_set_value(g_screens[SCREEN_SETTINGS].settings.low_temp_slider, g_target_low_temp, LV_ANIM_OFF);
+    lv_obj_add_event_cb(g_screens[SCREEN_SETTINGS].settings.low_temp_slider, 
                     settings_slider_event_cb, LV_EVENT_VALUE_CHANGED, NULL);
     
     // Presence range section
     lv_obj_t *range_container = lv_obj_create(settings_container);
     lv_obj_remove_style_all(range_container);
-    lv_obj_set_size(range_container, LV_PCT(100), LV_SIZE_CONTENT);
+    lv_obj_set_size(range_container, LV_PCT(90), LV_PCT(15));
     lv_obj_set_flex_flow(range_container, LV_FLEX_FLOW_COLUMN);
+     lv_obj_set_flex_align(range_container, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
     
     // Presence range label styling
     g_screens[SCREEN_SETTINGS].settings.range_label = lv_label_create(range_container);
     lv_obj_set_style_text_font(g_screens[SCREEN_SETTINGS].settings.range_label, &lv_font_montserrat_18, 0);
     lv_obj_set_style_text_color(g_screens[SCREEN_SETTINGS].settings.range_label, lv_color_make(0, 0, 0), 0);
     lv_obj_set_style_text_opa(g_screens[SCREEN_SETTINGS].settings.range_label, LV_OPA_COVER, 0);
-    snprintf(buf, sizeof(buf), "Range: %.1fm", g_range_limit);
+    snprintf(buf, sizeof(buf), "Range: %dm", g_range_limit);
     lv_label_set_text(g_screens[SCREEN_SETTINGS].settings.range_label, buf);
     
     g_screens[SCREEN_SETTINGS].settings.presence_range_slider = lv_slider_create(range_container);
-    lv_obj_set_width(g_screens[SCREEN_SETTINGS].settings.presence_range_slider, LV_PCT(100));
-    lv_slider_set_range(g_screens[SCREEN_SETTINGS].settings.presence_range_slider, 0, 7);
-        lv_obj_add_event_cb(g_screens[SCREEN_SETTINGS].settings.presence_range_slider, 
-                    settings_slider_event_cb, LV_EVENT_VALUE_CHANGED, NULL);
+    lv_obj_set_width(g_screens[SCREEN_SETTINGS].settings.presence_range_slider, LV_PCT(90));
+    lv_slider_set_range(g_screens[SCREEN_SETTINGS].settings.presence_range_slider, 1, 10); // Range in meters
+    lv_slider_set_value(g_screens[SCREEN_SETTINGS].settings.presence_range_slider, g_range_limit, LV_ANIM_OFF);
+    lv_obj_add_event_cb(g_screens[SCREEN_SETTINGS].settings.presence_range_slider, 
+                  settings_slider_event_cb, LV_EVENT_VALUE_CHANGED, NULL);
     
-      // Room mask section
+      // Room number section
     lv_obj_t *room_container = lv_obj_create(settings_container);
     lv_obj_remove_style_all(room_container);
-    lv_obj_set_size(room_container, LV_PCT(100), LV_SIZE_CONTENT);
+    lv_obj_set_size(room_container, LV_PCT(90), LV_PCT(15));
     lv_obj_set_flex_flow(room_container, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(room_container, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
     
-    // Channel label styling
+    // Room label styling
     g_screens[SCREEN_SETTINGS].settings.room_label = lv_label_create(room_container);
     lv_obj_set_style_text_font(g_screens[SCREEN_SETTINGS].settings.room_label, &lv_font_montserrat_18, 0);
     lv_obj_set_style_text_color(g_screens[SCREEN_SETTINGS].settings.room_label, lv_color_make(0, 0, 0), 0);
@@ -223,8 +256,9 @@ static void create_settings_screen(void) {
     lv_label_set_text(g_screens[SCREEN_SETTINGS].settings.room_label, buf);
     
     g_screens[SCREEN_SETTINGS].settings.room_slider = lv_slider_create(room_container);
-    lv_obj_set_width(g_screens[SCREEN_SETTINGS].settings.room_slider, LV_PCT(100));
+    lv_obj_set_width(g_screens[SCREEN_SETTINGS].settings.room_slider, LV_PCT(90));
     lv_slider_set_range(g_screens[SCREEN_SETTINGS].settings.room_slider, 1, MAX_ROOMS);
+    lv_slider_set_value(g_screens[SCREEN_SETTINGS].settings.room_slider, g_room, LV_ANIM_OFF);
         lv_obj_add_event_cb(g_screens[SCREEN_SETTINGS].settings.room_slider, 
                     settings_slider_event_cb, LV_EVENT_VALUE_CHANGED, NULL);
 
@@ -236,11 +270,12 @@ static void create_settings_screen(void) {
         g_screens[SCREEN_SETTINGS].settings.room_slider
     };
     
-    for(int i = 0; i < 3; i++) {
-        lv_obj_set_style_pad_top(sliders[i], 15, 0);    // Space above slider
-        lv_obj_set_style_pad_bottom(sliders[i], 15, 0); // Space below slider
-        lv_obj_add_flag(sliders[i], LV_OBJ_FLAG_ADV_HITTEST);  // Better touch handling
-    }
+    // for(int i = 0; i < 4; i++) {
+    //     //these dont do what they say they do....
+    //     // lv_obj_set_style_pad_top(sliders[i], 15, 0);    // Space above slider
+    //     // lv_obj_set_style_pad_bottom(sliders[i], 15, 0); // Space below slider
+    //     // lv_obj_add_flag(sliders[i], LV_OBJ_FLAG_ADV_HITTEST);  // Better touch handling
+    // }
 
       // Create button container at bottom
     lv_obj_t *button_container = lv_obj_create(screen);
@@ -328,7 +363,7 @@ void ui_update_main_screen(float temp, float humidity, bool presence, bool is_wi
     lv_label_set_text(g_screens[SCREEN_MAIN].main.range_label, range_buf);
 }
 
-void ui_update_settings(uint8_t high_temp, uint8_t low_temp, float presence_range, uint8_t room) {
+void ui_update_settings(uint8_t high_temp, uint8_t low_temp, uint8_t presence_range, uint8_t room) {
 
 
 
@@ -344,7 +379,7 @@ void ui_update_settings(uint8_t high_temp, uint8_t low_temp, float presence_rang
     //range limit is in centimeters, convert to meters for display
     snprintf(high_temp_str, sizeof(high_temp_str), "High: %d°C", high_temp);
     snprintf(low_temp_str, sizeof(low_temp_str), "Low: %d°C", low_temp);
-    snprintf(range_str, sizeof(range_str), "Range: %.1fm", presence_range/100);
+    snprintf(range_str, sizeof(range_str), "Range: %dm", presence_range);
     snprintf(room_str,sizeof(room_str), "room: %d", room);
     
     lv_label_set_text(g_screens[SCREEN_SETTINGS].settings.high_temp_label, high_temp_str);
@@ -356,4 +391,24 @@ void ui_update_boot_status(const char *status,const char *header) {
 
     lv_label_set_text(g_screens[SCREEN_BOOT].boot.header_label, header);
     lv_label_set_text(g_screens[SCREEN_BOOT].boot.status_label, status);
+}
+
+void show_action_button(bool show) {
+    if (show) {
+        lv_obj_clear_flag(g_screens[SCREEN_BOOT].boot.button_container, LV_OBJ_FLAG_HIDDEN);
+        
+    
+
+    } else {
+        lv_obj_add_flag(g_screens[SCREEN_BOOT].boot.button_container, LV_OBJ_FLAG_HIDDEN);
+        
+    }
+}
+
+
+void boot_action_btn_cb(lv_event_t *e)
+{
+    ESP_LOGI("BOOT SCREEN", "Boot action button clicked, switching to main screen");
+    // Switch to main screen
+    ui_switch_screen(SCREEN_MAIN);
 }
