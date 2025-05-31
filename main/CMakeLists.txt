@@ -7,6 +7,10 @@ idf_component_register(
     "LVGL_UI/assets/presence_inactive.c"
     "LVGL_UI/assets/window_closed.c"
     "LVGL_UI/assets/window_open.c"
+    "LVGL_UI/assets/window.c"
+    "LVGL_UI/assets/flame.c"
+    "LVGL_UI/assets/presence.c"
+  
     "LVGL_UI/ui_screens.c"
     "Zigbee/zigbee.c"
     "Sensors/sensors.c"
@@ -23,6 +27,8 @@ idf_component_register(
     "./esp_touch"
     "./LVGL_Driver" 
     "./LVGL_UI" 
+    "./LVGL_UI/assets"
+
     "./Zigbee"
     "./Sensors"
     "./Buttons"
