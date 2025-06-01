@@ -4,11 +4,9 @@
 #include "settings.h"
 
 
-LV_IMG_DECLARE(presence_active);
-LV_IMG_DECLARE(presence_inactive);
-LV_IMG_DECLARE(window_open);
-LV_IMG_DECLARE(window_closed);
+
 LV_IMG_DECLARE(flame);
+LV_IMG_DECLARE(no_flame);
 LV_IMG_DECLARE(presence);
 LV_IMG_DECLARE(window);
 
@@ -97,7 +95,7 @@ static void create_main_screen(void) {
     lv_obj_t *temp_container = lv_obj_create(screen);
     lv_obj_remove_style_all(temp_container);
     lv_obj_align(temp_container, LV_ALIGN_TOP_MID, 0, 10);
-    lv_obj_set_size(temp_container, LV_PCT(100), 100);  // Set size for container
+    lv_obj_set_size(temp_container, LV_PCT(100), LV_PCT(30));  // Set size for container
     // lv_obj_set_style_border_width(temp_container, 2, 0);
     // lv_obj_set_style_border_color(temp_container, lv_color_make(255, 0, 0), 0);
     // lv_obj_set_style_radius(temp_container, 10, 0);
@@ -134,7 +132,7 @@ static void create_main_screen(void) {
     lv_obj_t *temp_unit = lv_label_create(temp_suffix_container);
     lv_obj_set_style_text_font(temp_unit, &lv_font_montserrat_38, 0);
     lv_label_set_text(temp_unit, "°C");
-    lv_obj_align(temp_unit, LV_ALIGN_RIGHT_MID, -13, 0);
+    lv_obj_align(temp_unit, LV_ALIGN_RIGHT_MID, -18, 0);
     lv_obj_set_style_text_color(temp_unit, lv_color_make(150, 150, 255), 0);
     lv_obj_set_style_text_opa(temp_unit, LV_OPA_COVER, 0);
     
@@ -146,56 +144,78 @@ static void create_main_screen(void) {
     lv_obj_set_style_text_opa(g_screens[SCREEN_MAIN].main.humid_label, LV_OPA_COVER, 0);
     // lv_obj_set_style_border_width(g_screens[SCREEN_MAIN].main.humid_label, 2, 0);
     // lv_obj_set_style_border_color(g_screens[SCREEN_MAIN].main.humid_label, lv_color_make(0, 0, 255), 0);
-    
+
+    /////////////////////////////////////////////////////////////////////////////////////////////
+
     // Create container for status icons at bottom
     lv_obj_t *status_container = lv_obj_create(screen);
     lv_obj_remove_style_all(status_container);
-    lv_obj_align(status_container, LV_ALIGN_BOTTOM_MID, 0, -30);
-    lv_obj_set_size(status_container, LV_PCT(90), 140);
-    lv_obj_set_style_bg_color(status_container, lv_color_make(0, 0, 255), 0);
-    lv_obj_set_style_radius(status_container, 10, 0);
-    lv_obj_set_style_border_color(status_container, lv_color_make(255, 255, 255), 0);
-    lv_obj_set_style_border_width(status_container, 2, 0);  
-    lv_obj_set_style_bg_opa(status_container, LV_OPA_COVER, 0); 
+    lv_obj_align(status_container, LV_ALIGN_BOTTOM_MID, 0, 0);
+    lv_obj_set_size(status_container, LV_PCT(100), LV_PCT(70));
+    lv_obj_set_style_bg_color(status_container, lv_color_make(0, 0, 0), 0);
+    // lv_obj_set_style_radius(status_container, 10, 0);
+    // lv_obj_set_style_border_color(status_container, lv_color_make(255, 255, 255), 0);
+    // lv_obj_set_style_border_width(status_container, 2, 0);  
+    // lv_obj_set_style_bg_opa(status_container, LV_OPA_COVER, 0); 
 
     // Presence container, icon and its range label
     lv_obj_t *presence_container = lv_obj_create(status_container);
     lv_obj_remove_style_all(presence_container);
-    lv_obj_align(presence_container, LV_ALIGN_RIGHT_MID, 0, 0);
-    lv_obj_set_size(presence_container, LV_PCT(30), LV_PCT(100));
-    lv_obj_set_style_bg_color(presence_container, lv_color_make(255, 255, 255), 0);
-    lv_obj_set_style_radius(presence_container, LV_PCT(50), 0);
-    lv_obj_set_style_border_width(presence_container, 2, 0);
-    lv_obj_set_style_border_color(presence_container, lv_color_make(0, 255, 255), 0);
+    lv_obj_align(presence_container, LV_ALIGN_TOP_LEFT, 0, 0);
+    lv_obj_set_size(presence_container, LV_PCT(50), LV_PCT(50));
+    // lv_obj_set_style_bg_color(presence_container, lv_color_make(255, 255, 255), 0);
+    // lv_obj_set_style_radius(presence_container, LV_PCT(50), 0);
+    // lv_obj_set_style_border_width(presence_container, 2, 0);
+    // lv_obj_set_style_border_color(presence_container, lv_color_make(0, 255, 255), 0);
 
     g_screens[SCREEN_MAIN].main.presence_img = lv_img_create(presence_container);
-    lv_img_set_src(g_screens[SCREEN_MAIN].main.presence_img, &presence_inactive);
-    lv_obj_align(g_screens[SCREEN_MAIN].main.presence_img, LV_ALIGN_TOP_MID, 0, 0);
+    lv_img_set_src(g_screens[SCREEN_MAIN].main.presence_img, &presence);
+    lv_obj_align(g_screens[SCREEN_MAIN].main.presence_img, LV_ALIGN_CENTER, 0, 0);
+    lv_obj_add_flag(g_screens[SCREEN_MAIN].main.presence_img, LV_OBJ_FLAG_HIDDEN); // Enable advanced hit testing
     
 
     // Add range label under presence icon
     g_screens[SCREEN_MAIN].main.range_label = lv_label_create(presence_container);
-    lv_obj_set_style_text_font(g_screens[SCREEN_MAIN].main.range_label, &lv_font_montserrat_18, 0);
+    lv_obj_set_style_text_font(g_screens[SCREEN_MAIN].main.range_label, &lv_font_montserrat_24, 0);
     lv_label_set_text(g_screens[SCREEN_MAIN].main.range_label, "0cm");
     lv_obj_align(g_screens[SCREEN_MAIN].main.range_label, LV_ALIGN_BOTTOM_MID, 0, -30);
-       lv_obj_set_style_text_color(g_screens[SCREEN_MAIN].main.range_label, lv_color_make(0, 255, 0), 0);
+       lv_obj_set_style_text_color(g_screens[SCREEN_MAIN].main.range_label, lv_color_make(0, 0, 255), 0);
     lv_obj_set_style_text_opa(g_screens[SCREEN_MAIN].main.range_label, LV_OPA_COVER, 0);
+    lv_obj_add_flag(g_screens[SCREEN_MAIN].main.range_label, LV_OBJ_FLAG_HIDDEN); // Hide initially
 
-    //window container and icon
+    //window container
     lv_obj_t *window_container = lv_obj_create(status_container);
     lv_obj_remove_style_all(window_container);
-    lv_obj_align(window_container, LV_ALIGN_LEFT_MID, 0, 0);
-    lv_obj_set_size(window_container, LV_PCT(40),LV_PCT(100));
-    lv_obj_set_style_bg_color(window_container, lv_color_make(201, 176, 217), 0);
-    lv_obj_set_style_radius(window_container, 10, 0);
-    lv_obj_set_style_border_width(window_container, 2, 0);
-    lv_obj_set_style_border_color(window_container, lv_color_make(0, 0, 255), 0);
-    lv_obj_set_style_bg_opa(window_container, LV_OPA_COVER, 0);
+    lv_obj_align(window_container, LV_ALIGN_TOP_RIGHT, 0, 0);
+    lv_obj_set_size(window_container, LV_PCT(50),LV_PCT(50));
+    // lv_obj_set_style_bg_color(window_container, lv_color_make(201, 176, 217), 0);
+    // lv_obj_set_style_radius(window_container, 10, 0);
+    // lv_obj_set_style_border_width(window_container, 2, 0);
+    // lv_obj_set_style_border_color(window_container, lv_color_make(0, 0, 255), 0);
+    // lv_obj_set_style_bg_color(window_container,lv_color_make(0,0,0), 0);
 
     // Window icon
     g_screens[SCREEN_MAIN].main.window_img = lv_img_create(window_container);
-    lv_img_set_src(g_screens[SCREEN_MAIN].main.window_img, &window_closed);
+    lv_img_set_src(g_screens[SCREEN_MAIN].main.window_img, &window);
     lv_obj_align(g_screens[SCREEN_MAIN].main.window_img, LV_ALIGN_CENTER, 0, 0);
+    lv_obj_add_flag(g_screens[SCREEN_MAIN].main.window_img, LV_OBJ_FLAG_HIDDEN); 
+
+    //flame container
+    lv_obj_t *flame_container = lv_obj_create(status_container);
+    lv_obj_remove_style_all(flame_container);
+    lv_obj_align(flame_container, LV_ALIGN_BOTTOM_MID, 0, 0);
+    lv_obj_set_size(flame_container, LV_PCT(100), LV_PCT(50));
+    // lv_obj_set_style_bg_color(flame_container, lv_color_make(255, 255, 255), 0);
+    // lv_obj_set_style_radius(flame_container, 10, 0);
+    // lv_obj_set_style_border_width(flame_container, 2, 0);
+    // lv_obj_set_style_border_color(flame_container, lv_color_make(255, 0, 0), 0);
+    // lv_obj_set_style_bg_color(flame_container, lv_color_make(0, 0, 0), 0);
+    // Flame icon
+    g_screens[SCREEN_MAIN].main.flame_img = lv_img_create(flame_container);
+    lv_img_set_src(g_screens[SCREEN_MAIN].main.flame_img, &no_flame);
+    lv_obj_align(g_screens[SCREEN_MAIN].main.flame_img, LV_ALIGN_CENTER, 0, 0);
+
+
 }
 
 static void create_settings_screen(void) {
@@ -368,7 +388,7 @@ void ui_switch_screen(screen_id_t screen) {
     current_screen = screen;
 }
 
-void ui_update_main_screen(float temp, float humidity, bool presence, bool is_window_open)
+void ui_update_main_screen(float temp, float humidity, bool presence, bool is_window_open,bool trv_state)
 {
     if (!g_screens[SCREEN_MAIN].main.temp_label) return;
     
@@ -389,10 +409,30 @@ void ui_update_main_screen(float temp, float humidity, bool presence, bool is_wi
     lv_label_set_text(g_screens[SCREEN_MAIN].main.humid_label, humid_buf);
     
     // Update status icons
-    lv_img_set_src(g_screens[SCREEN_MAIN].main.presence_img, 
-                   presence ? &presence_active : &presence_inactive);
-    lv_img_set_src(g_screens[SCREEN_MAIN].main.window_img,
-                   is_window_open ? &window_open : &window_closed);
+    if(!presence){
+        lv_obj_add_flag(g_screens[SCREEN_MAIN].main.presence_img, LV_OBJ_FLAG_HIDDEN);
+    } else {
+        lv_obj_clear_flag(g_screens[SCREEN_MAIN].main.presence_img, LV_OBJ_FLAG_HIDDEN);
+    }
+    if(!is_window_open){
+        lv_obj_add_flag(g_screens[SCREEN_MAIN].main.window_img, LV_OBJ_FLAG_HIDDEN);
+    } else {
+   
+        lv_obj_clear_flag(g_screens[SCREEN_MAIN].main.window_img, LV_OBJ_FLAG_HIDDEN);
+    }
+    if(trv_state){
+  
+        lv_img_set_src(g_screens[SCREEN_MAIN].main.flame_img, &flame);
+    } else {
+        lv_img_set_src(g_screens[SCREEN_MAIN].main.flame_img, &no_flame);
+    }
+ 
+ 
+    
+    // lv_img_set_src(g_screens[SCREEN_MAIN].main.presence_img, 
+    //                presence ? &presence_active : &presence_inactive);
+    // lv_img_set_src(g_screens[SCREEN_MAIN].main.window_img,
+    //                is_window_open ? &window_open : &window_closed);
 
     // Update range display
     static char range_buf[16];

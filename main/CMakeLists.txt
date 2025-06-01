@@ -3,13 +3,11 @@ idf_component_register(
     "main.c"
 
     "LVGL_Driver/LVGL_Driver.c"
-    "LVGL_UI/assets/presence_active.c"
-    "LVGL_UI/assets/presence_inactive.c"
-    "LVGL_UI/assets/window_closed.c"
-    "LVGL_UI/assets/window_open.c"
+
     "LVGL_UI/assets/window.c"
     "LVGL_UI/assets/flame.c"
     "LVGL_UI/assets/presence.c"
+    "LVGL_UI/assets/no_flame.c"
   
     "LVGL_UI/ui_screens.c"
     "Zigbee/zigbee.c"

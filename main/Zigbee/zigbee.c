@@ -202,7 +202,20 @@ static void find_trv(esp_zb_zdo_match_desc_req_param_t *param, esp_zb_zdo_match_
     param->cluster_list = cluster_list;
     esp_zb_zdo_match_cluster(param, callback, user_ctx);
 }
+void read_all_window_sensors_status(void)
+{
+    ESP_LOGI(TAG, "Reading status of all window sensors");
 
+    for (uint8_t i = 0; i <= stored_device_count; i++)
+    {
+        if(stored_devices[i].type == DEVICE_TYPE_WINDOW_SENSOR){
+        uint16_t addr = stored_devices[i].short_addr;
+        uint8_t endpoint = stored_devices[i].endpoint;
+
+        read_window_sensor_status(addr, endpoint);
+        }
+    }
+}
 void read_window_sensor_status(uint16_t addr, uint8_t endpoint)
 {
     // Define the attribute ID we want to read
@@ -483,6 +496,7 @@ void zigbee_signal_handler(esp_zb_app_signal_t *signal_struct)
                         ESP_LOGI(TAG, "Devices loaded from NVS including at least 1 trv");
                         vTaskDelay(SHORT_DELAY);
                         close_network(); // Close network after loading devices
+                        read_all_window_sensors_status(); // Read status of all window sensors
                         ui_event_t close_event = {
                             .target_screen = SCREEN_BOOT,
                             .message = "Starting thermostat"};

@@ -559,7 +559,8 @@ static void ui_update_task(void *pvParameters)
                     g_temperature > 0 ? g_temperature : 0.0f,
                     g_humidity > 0 ? g_humidity : 0.0f,
                     g_presence_detected,
-                    g_is_window_open);
+                    g_is_window_open,
+                g_trv_state);
                 break;
 
             case SCREEN_SETTINGS:
