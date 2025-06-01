@@ -3,6 +3,7 @@
 #include "ui_events.h"
 #include "esp_zigbee_core.h"
 #include "esp_log.h"
+#include "main.h"
 
 #define REJOIN_THRESHOLD_MS 30000
 
@@ -57,6 +58,7 @@ char* get_device_name(uint16_t address)
             esp_zb_zcl_write_attr_cmd_req(&mode_cmd);
         }
     }
+    g_trv_state=false;
 }
 void turn_trvs_on(void)
 {
@@ -89,6 +91,7 @@ void turn_trvs_on(void)
             esp_zb_zcl_write_attr_cmd_req(&mode_cmd);
         }
     }
+    g_trv_state=true;
 }
 void display_network_key(void)
 {

@@ -34,6 +34,7 @@ typedef struct
             lv_obj_t *humid_label;
             lv_obj_t *presence_img;
             lv_obj_t *window_img;
+            lv_obj_t *flame_img;    // Flame icon for TRV state
             lv_obj_t *range_label; // New label for range display
         } main;
 
@@ -69,7 +70,7 @@ extern float g_current_range; // Current detected range in meters
 void ui_init_screens(void);
 void ui_switch_screen(screen_id_t screen);
 void ui_update_boot_status(const char *status, const char *header);
-void ui_update_main_screen(float temp, float humidity, bool presence, bool window_open);
+void ui_update_main_screen(float temp, float humidity, bool presence, bool window_open, bool trv_state);
 void ui_update_settings(uint8_t high_temp, uint8_t low_temp, uint8_t presence_range, uint8_t room);
 void show_action_button(bool show);
 void boot_action_btn_cb(lv_event_t *e);
