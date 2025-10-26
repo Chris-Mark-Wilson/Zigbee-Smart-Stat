@@ -301,7 +301,38 @@ case ESP_ZB_CORE_CMD_IAS_ZONE_ZONE_STATUS_CHANGE_NOT_ID:
 }
 
 // TODO implement when everything is bound and getting data
-static void evaluate_control_logic(void) {}
+static void evaluate_control_logic(void) {
+    if(!g_presence_detected){
+        // No presence detected - turn off TRV
+        if(g_trv_state) {
+            turn_trvs_off();
+        }
+        return;
+    }
+    if(g_is_window_open) {
+        // If window is open, turn off TRV
+        if(g_trv_state) {
+            turn_trvs_off();
+        }
+        return;
+    }
+    //if temp > temp max turn off trv
+    if(g_temperature>=g_target_high_temp && g_trv_state) {
+        turn_trvs_off();
+        return;
+    }
+    //if presence detected && windows are closed && temp < temp max turn on trv
+    if(g_presence_detected && !g_is_window_open && g_temperature < g_target_high_temp) {
+        turn_trvs_on();
+        return;
+    }
+    //if temp < temp min && windows are closed turn on trv 
+    if(g_temperature < g_target_low_temp && !g_is_window_open) {
+        turn_trvs_on();
+        return;
+    }
+return;
+}
 
 static void lvgl_task(void *pvParameters)
 {
@@ -485,7 +516,10 @@ ESP_LOGW("ZIGBEE TASK SETTINGS DEBUG", "Settings loaded: Target High Temp: %d, T
     // Enter Zigbee main loop
     esp_zb_stack_main_loop();
 }
-
+// ...existing code...
+// ...existing code...
+// ...existing code...
+// ...existing code...
 static void hmmd_read_task(void *arg)
 {
     if (!g_hmmd_initialised)

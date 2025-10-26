@@ -411,8 +411,10 @@ void ui_update_main_screen(float temp, float humidity, bool presence, bool is_wi
     // Update status icons
     if(!presence){
         lv_obj_add_flag(g_screens[SCREEN_MAIN].main.presence_img, LV_OBJ_FLAG_HIDDEN);
+        // ESP_LOGI("UI","Hiding presence icon");
     } else {
         lv_obj_clear_flag(g_screens[SCREEN_MAIN].main.presence_img, LV_OBJ_FLAG_HIDDEN);
+        // ESP_LOGI("UI","Showing presence icon");
     }
     if(!is_window_open){
         lv_obj_add_flag(g_screens[SCREEN_MAIN].main.window_img, LV_OBJ_FLAG_HIDDEN);
