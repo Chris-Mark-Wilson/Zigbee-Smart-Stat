@@ -3,6 +3,7 @@
 # Smart, individual room, zigbee thermostat for HMO Landlords
 
 # Still under development, slightly buggy but working MVP
+(blob:https://cmwilson.co.uk/90bf8c34-604a-4d5e-9f89-3a42bd16b2da)
 
 ### instructions for use..
 
