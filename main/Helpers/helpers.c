@@ -50,10 +50,15 @@ char* get_device_name(uint16_t address)
                 .clusterID = ESP_ZB_ZCL_CLUSTER_ID_THERMOSTAT,
                 .direction = ESP_ZB_ZCL_CMD_DIRECTION_TO_SRV,
                 .attr_number = 1,
-                .attr_field = &(esp_zb_zcl_attribute_t){.id = ESP_ZB_ZCL_ATTR_THERMOSTAT_SYSTEM_MODE_ID,
-                .data.type = ESP_ZB_ZCL_ATTR_TYPE_8BIT_ENUM, // Use 8-bit enum type
-                .data.size = sizeof(uint8_t),
-                .data.value = (uint8_t *)(&(uint8_t){ESP_ZB_ZCL_THERMOSTAT_SYSTEM_MODE_OFF})}};
+                .attr_field = &(esp_zb_zcl_attribute_t){
+                    .id = ESP_ZB_ZCL_ATTR_THERMOSTAT_SYSTEM_MODE_ID,
+                    .data.type = ESP_ZB_ZCL_ATTR_TYPE_8BIT_ENUM, // Use 8-bit enum type
+                    .data.size = sizeof(uint8_t),
+                    .data.value = (uint8_t *)(&(uint8_t){
+                        ESP_ZB_ZCL_THERMOSTAT_SYSTEM_MODE_OFF
+                    })
+                }
+             };
          ESP_LOGI("TRV OPERATION", "Turning OFF TRV at address 0x%04x", stored_devices[i].short_addr);
             esp_zb_zcl_write_attr_cmd_req(&mode_cmd);
         }

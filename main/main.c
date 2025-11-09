@@ -420,7 +420,7 @@ static esp_zb_cluster_list_t *custom_thermostat_clusters_create(esp_zb_thermosta
 
     return cluster_list;
 }
-// do not delete, needed to bind trv for two way communication and IAS zone cluster
+// do not delete, needed to bind trv for two way communication and IAS zone cluster, (intruder alarm system)
 // creates the endpoint and adds the clusters to it
 
 // Separate cluster creation for IAS Zone endpoint
