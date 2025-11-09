@@ -33,46 +33,46 @@ char* get_device_name(uint16_t address)
     snprintf(device_name, sizeof(device_name), "Unknown (0x%04x)", address);
     return device_name;
 }
-
- void turn_trvs_off(void)
-{
-    for (uint8_t i = 0; i < stored_device_count; i++)
-    {
-        if (stored_devices[i].type == DEVICE_TYPE_TRV)
-        {
-            esp_zb_zcl_write_attr_cmd_t mode_cmd = {
-                .zcl_basic_cmd = {
-                    .dst_addr_u.addr_short = stored_devices[i].short_addr,
-                    .dst_endpoint = stored_devices[i].endpoint,
-                    .src_endpoint = HA_THERMOSTAT_ENDPOINT,
-                },
-                .address_mode = ESP_ZB_APS_ADDR_MODE_16_ENDP_PRESENT,
-                .clusterID = ESP_ZB_ZCL_CLUSTER_ID_THERMOSTAT,
-                .direction = ESP_ZB_ZCL_CMD_DIRECTION_TO_SRV,
-                .attr_number = 1,
-                .attr_field = &(esp_zb_zcl_attribute_t){
-                    .id = ESP_ZB_ZCL_ATTR_THERMOSTAT_SYSTEM_MODE_ID,
-                    .data.type = ESP_ZB_ZCL_ATTR_TYPE_8BIT_ENUM, // Use 8-bit enum type
-                    .data.size = sizeof(uint8_t),
-                    .data.value = (uint8_t *)(&(uint8_t){
-                        ESP_ZB_ZCL_THERMOSTAT_SYSTEM_MODE_OFF
-                    })
-                }
-             };
-         ESP_LOGI("TRV OPERATION", "Turning OFF TRV at address 0x%04x", stored_devices[i].short_addr);
-            esp_zb_zcl_write_attr_cmd_req(&mode_cmd);
-        }
-    }
-    g_trv_state=false;
-}
-void turn_trvs_on(void)
+//again this is wrong, use occupied heating setpoint instead..
+//  void turn_trvs_off(void) 
+// {
+//     for (uint8_t i = 0; i < stored_device_count; i++)
+//     {
+//         if (stored_devices[i].type == DEVICE_TYPE_TRV)
+//         {
+//             esp_zb_zcl_write_attr_cmd_t mode_cmd = {
+//                 .zcl_basic_cmd = {
+//                     .dst_addr_u.addr_short = stored_devices[i].short_addr,
+//                     .dst_endpoint = stored_devices[i].endpoint,
+//                     .src_endpoint = HA_THERMOSTAT_ENDPOINT,
+//                 },
+//                 .address_mode = ESP_ZB_APS_ADDR_MODE_16_ENDP_PRESENT,
+//                 .clusterID = ESP_ZB_ZCL_CLUSTER_ID_THERMOSTAT,
+//                 .direction = ESP_ZB_ZCL_CMD_DIRECTION_TO_SRV,
+//                 .attr_number = 1,
+//                 .attr_field = &(esp_zb_zcl_attribute_t){
+//                     .id = ESP_ZB_ZCL_ATTR_THERMOSTAT_SYSTEM_MODE_ID,
+//                     .data.type = ESP_ZB_ZCL_ATTR_TYPE_8BIT_ENUM, // Use 8-bit enum type
+//                     .data.size = sizeof(uint8_t),
+//                     .data.value = (uint8_t *)(&(uint8_t){
+//                         ESP_ZB_ZCL_THERMOSTAT_SYSTEM_MODE_OFF
+//                     })
+//                 }
+//              };
+//          ESP_LOGI("TRV OPERATION", "Turning OFF TRV at address 0x%04x", stored_devices[i].short_addr);
+//             esp_zb_zcl_write_attr_cmd_req(&mode_cmd);
+//         }
+//     }
+//     g_trv_state=false;
+// }
+void turn_trvs_off(void)
 {
     for (uint8_t i = 0; i < stored_device_count; i++)
     {
         if (stored_devices[i].type == DEVICE_TYPE_TRV)
         {
             // Create a static value to ensure it remains valid
-            static uint8_t mode_value = ESP_ZB_ZCL_THERMOSTAT_SYSTEM_MODE_HEAT;
+            static uint8_t mode_value = ESP_ZB_ZCL_THERMOSTAT_SYSTEM_MODE_OFF;
             
             esp_zb_zcl_write_attr_cmd_t mode_cmd = {
                 .zcl_basic_cmd = {
@@ -92,12 +92,85 @@ void turn_trvs_on(void)
                 }
             };
 
-            ESP_LOGI("TRV OPERATION", "Turning ON TRV at address 0x%04x", stored_devices[i].short_addr);
+            ESP_LOGI("TRV OPERATION", "Turning OFF TRV at address 0x%04x", stored_devices[i].short_addr);
             esp_zb_zcl_write_attr_cmd_req(&mode_cmd);
         }
     }
-    g_trv_state=true;
+    g_trv_state = false;
 }
+
+//this is oncorrect as it is getting ignored by the trv, need to set occupied heating setpoint instead
+// void turn_trvs_on(void)
+// {
+//     for (uint8_t i = 0; i < stored_device_count; i++)
+//     {
+//         if (stored_devices[i].type == DEVICE_TYPE_TRV)
+//         {
+//             // Create a static value to ensure it remains valid
+//             static uint8_t mode_value = ESP_ZB_ZCL_THERMOSTAT_SYSTEM_MODE_HEAT;
+            
+//             esp_zb_zcl_write_attr_cmd_t mode_cmd = {
+//                 .zcl_basic_cmd = {
+//                     .dst_addr_u.addr_short = stored_devices[i].short_addr,
+//                     .dst_endpoint = stored_devices[i].endpoint,
+//                     .src_endpoint = HA_THERMOSTAT_ENDPOINT,
+//                 },
+//                 .address_mode = ESP_ZB_APS_ADDR_MODE_16_ENDP_PRESENT,
+//                 .clusterID = ESP_ZB_ZCL_CLUSTER_ID_THERMOSTAT,
+//                 .direction = ESP_ZB_ZCL_CMD_DIRECTION_TO_SRV,
+//                 .attr_number = 1,
+//                 .attr_field = &(esp_zb_zcl_attribute_t){
+//                     .id = ESP_ZB_ZCL_ATTR_THERMOSTAT_SYSTEM_MODE_ID,
+//                     .data.type = ESP_ZB_ZCL_ATTR_TYPE_8BIT_ENUM,
+//                     .data.size = sizeof(uint8_t),
+//                     .data.value = &mode_value
+//                 }
+//             };
+
+//             ESP_LOGI("TRV OPERATION", "Turning ON TRV at address 0x%04x", stored_devices[i].short_addr);
+//             esp_zb_zcl_write_attr_cmd_req(&mode_cmd);
+//         }
+//     }
+//     g_trv_state=true;
+// }
+// so instead we now have this...
+void turn_trvs_on(void)
+{
+    for (uint8_t i = 0; i < stored_device_count; i++)
+    {
+        if (stored_devices[i].type == DEVICE_TYPE_TRV)
+        {
+            static int16_t setpoint_value = 3000;  // 30.00°C → 3000
+
+            esp_zb_zcl_write_attr_cmd_t cmd = {
+                .zcl_basic_cmd = {
+                    .dst_addr_u.addr_short = stored_devices[i].short_addr,
+                    .dst_endpoint = stored_devices[i].endpoint,
+                    .src_endpoint = HA_THERMOSTAT_ENDPOINT,
+                },
+                .address_mode = ESP_ZB_APS_ADDR_MODE_16_ENDP_PRESENT,
+                .clusterID = ESP_ZB_ZCL_CLUSTER_ID_THERMOSTAT,
+                .direction = ESP_ZB_ZCL_CMD_DIRECTION_TO_SRV,
+                .attr_number = 1,
+                .attr_field = &(esp_zb_zcl_attribute_t){
+                    .id = ESP_ZB_ZCL_ATTR_THERMOSTAT_OCCUPIED_HEATING_SETPOINT_ID,
+                    .data.type = ESP_ZB_ZCL_ATTR_TYPE_S16,
+                    .data.size = sizeof(int16_t),
+                    .data.value = (uint8_t *)&setpoint_value
+                }
+            };
+
+            ESP_LOGI("TRV OPERATION",
+                     "Turning ON TRV %04x via setpoint = 30°C",
+                     stored_devices[i].short_addr);
+
+            esp_zb_zcl_write_attr_cmd_req(&cmd);
+        }
+    }
+
+    g_trv_state = true;
+}
+
 void display_network_key(void)
 {
     uint8_t network_key[16];

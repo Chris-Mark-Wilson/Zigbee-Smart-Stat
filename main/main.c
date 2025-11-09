@@ -302,36 +302,36 @@ case ESP_ZB_CORE_CMD_IAS_ZONE_ZONE_STATUS_CHANGE_NOT_ID:
 
 // TODO implement when everything is bound and getting data
 static void evaluate_control_logic(void) {
-    if(!g_presence_detected){
-        // No presence detected - turn off TRV
-        if(g_trv_state) {
-            turn_trvs_off();
-        }
-        return;
-    }
-    if(g_is_window_open) {
-        // If window is open, turn off TRV
-        if(g_trv_state) {
-            turn_trvs_off();
-        }
-        return;
-    }
-    //if temp > temp max turn off trv
-    if(g_temperature>=g_target_high_temp && g_trv_state) {
-        turn_trvs_off();
-        return;
-    }
-    //if presence detected && windows are closed && temp < temp max turn on trv
-    if(g_presence_detected && !g_is_window_open && g_temperature < g_target_high_temp) {
-        turn_trvs_on();
-        return;
-    }
-    //if temp < temp min && windows are closed turn on trv 
-    if(g_temperature < g_target_low_temp && !g_is_window_open) {
-        turn_trvs_on();
-        return;
-    }
-return;
+//     if(!g_presence_detected){
+//         // No presence detected - turn off TRV
+//         if(g_trv_state) {
+//             turn_trvs_off();
+//         }
+//         return;
+//     }
+//     if(g_is_window_open) {
+//         // If window is open, turn off TRV
+//         if(g_trv_state) {
+//             turn_trvs_off();
+//         }
+//         return;
+//     }
+//     //if temp > temp max turn off trv
+//     if(g_temperature>=g_target_high_temp && g_trv_state) {
+//         turn_trvs_off();
+//         return;
+//     }
+//     //if presence detected && windows are closed && temp < temp max turn on trv
+//     if(g_presence_detected && !g_is_window_open && g_temperature < g_target_high_temp) {
+//         turn_trvs_on();
+//         return;
+//     }
+//     //if temp < temp min && windows are closed turn on trv 
+//     if(g_temperature < g_target_low_temp && !g_is_window_open) {
+//         turn_trvs_on();
+//         return;
+//     }
+// return;
 }
 
 static void lvgl_task(void *pvParameters)
@@ -413,10 +413,15 @@ static esp_zb_cluster_list_t *custom_thermostat_clusters_create(esp_zb_thermosta
     esp_zb_attribute_list_t *basic_cluster = esp_zb_basic_cluster_create(&(thermostat->basic_cfg));
     ESP_ERROR_CHECK(esp_zb_cluster_list_add_basic_cluster(cluster_list, basic_cluster, ESP_ZB_ZCL_CLUSTER_SERVER_ROLE));
     
-    // Thermostat cluster for mode control (ON/OFF)
-    ESP_ERROR_CHECK(esp_zb_cluster_list_add_thermostat_cluster(cluster_list, 
-        esp_zb_thermostat_cluster_create(&(thermostat->thermostat_cfg)), 
-        ESP_ZB_ZCL_CLUSTER_SERVER_ROLE));
+    // Thermostat cluster for mode control (ON/OFF) needs to be a client role to control trvs apparently
+    // ESP_ERROR_CHECK(esp_zb_cluster_list_add_thermostat_cluster(cluster_list, 
+    //     esp_zb_thermostat_cluster_create(&(thermostat->thermostat_cfg)), 
+    //     ESP_ZB_ZCL_CLUSTER_SERVER_ROLE));
+     // Thermostat CLIENT cluster — REQUIRED to control TRVs, this will now be done using occupied heating setpoint in turn_trvs_on() in helpers 
+    ESP_ERROR_CHECK(esp_zb_cluster_list_add_thermostat_cluster(
+        cluster_list,
+        esp_zb_thermostat_cluster_create(&(thermostat->thermostat_cfg)),
+        ESP_ZB_ZCL_CLUSTER_CLIENT_ROLE));
 
     return cluster_list;
 }
