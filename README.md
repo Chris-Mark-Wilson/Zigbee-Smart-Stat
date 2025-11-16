@@ -57,7 +57,7 @@ A Case (enclosure) To assemble into, [these ones](https://thepihut.com/products/
 ### If the room becomes unoccupied for more than 10 minutes, set the trv to a lower target temp. ###
 #### Rather than turn it off completely until the room is occupied again, it monitors the room temp and will keep the room at the LOWER limit while unoccupied. This is to reduce heating bills, but also because a 4-5 degree increase in temp when the room becomes occupied is easily reached quickly, wheras a 10 degree increase would take an uncomfortably long time.
 ####
-### As soon as the thermostat registers occupation for more than 10 seconds (again, no false positives) it sets the target temp to the higher limit. ###
+### As soon as the thermostat registers occupation for more than 30 (defined in settings.h) seconds (again, no false positives) it sets the target temp to the higher limit. ###
 
 ### So, if the room is below upper target temp AND the room is occupied AND the windows are closed, it will open the trv until target temp is reached and will monitor and keep it there. ###
 ### If the room is unoccupied AND the windows are closed it will keep the room at the lower target temp ###
