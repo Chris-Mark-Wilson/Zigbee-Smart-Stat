@@ -34,13 +34,15 @@ char* get_device_name(uint16_t address)
     return device_name;
 }
 
- void turn_trvs_off(void)
+void turn_trvs_off(void)
 {
     for (uint8_t i = 0; i < stored_device_count; i++)
     {
         if (stored_devices[i].type == DEVICE_TYPE_TRV)
         {
-            esp_zb_zcl_write_attr_cmd_t mode_cmd = {
+            static int16_t off_setpoint = 500;   // 5.00°C → fully closes valve
+
+            esp_zb_zcl_write_attr_cmd_t cmd = {
                 .zcl_basic_cmd = {
                     .dst_addr_u.addr_short = stored_devices[i].short_addr,
                     .dst_endpoint = stored_devices[i].endpoint,
@@ -51,33 +53,38 @@ char* get_device_name(uint16_t address)
                 .direction = ESP_ZB_ZCL_CMD_DIRECTION_TO_SRV,
                 .attr_number = 1,
                 .attr_field = &(esp_zb_zcl_attribute_t){
-                    .id = ESP_ZB_ZCL_ATTR_THERMOSTAT_SYSTEM_MODE_ID,
-                    .data.type = ESP_ZB_ZCL_ATTR_TYPE_8BIT_ENUM, // Use 8-bit enum type
-                    .data.size = sizeof(uint8_t),
-                    .data.value = (uint8_t *)(&(uint8_t){
-                        ESP_ZB_ZCL_THERMOSTAT_SYSTEM_MODE_OFF
-                    })
+                    .id = ESP_ZB_ZCL_ATTR_THERMOSTAT_OCCUPIED_HEATING_SETPOINT_ID,
+                    .data.type = ESP_ZB_ZCL_ATTR_TYPE_S16,
+                    .data.size = sizeof(int16_t),
+                    .data.value = (uint8_t *)&off_setpoint
                 }
-             };
-         ESP_LOGI("TRV OPERATION", "Turning OFF TRV at address 0x%04x", stored_devices[i].short_addr);
-            esp_zb_zcl_write_attr_cmd_req(&mode_cmd);
+            };
+
+            ESP_LOGI("TRV OPERATION", "Turning OFF TRV at address 0x%04x", stored_devices[i].short_addr);
+            esp_zb_zcl_write_attr_cmd_req(&cmd);
         }
     }
-    g_trv_state=false;
+
+    g_trv_state = false;
 }
+
+
 void turn_trvs_on(void)
 {
     for (uint8_t i = 0; i < stored_device_count; i++)
     {
         if (stored_devices[i].type == DEVICE_TYPE_TRV)
         {
-            // Create a static value to ensure it remains valid
-            static uint8_t mode_value = ESP_ZB_ZCL_THERMOSTAT_SYSTEM_MODE_HEAT;
-            
-            esp_zb_zcl_write_attr_cmd_t mode_cmd = {
+            uint16_t addr = stored_devices[i].short_addr;
+            uint8_t ep   = stored_devices[i].endpoint;
+
+            /* ---- Step 1: SET SYSTEM MODE = HEAT ---- */
+            static uint8_t heat_mode = ESP_ZB_ZCL_THERMOSTAT_SYSTEM_MODE_HEAT;
+
+            esp_zb_zcl_write_attr_cmd_t sysmode_cmd = {
                 .zcl_basic_cmd = {
-                    .dst_addr_u.addr_short = stored_devices[i].short_addr,
-                    .dst_endpoint = stored_devices[i].endpoint,
+                    .dst_addr_u.addr_short = addr,
+                    .dst_endpoint = ep,
                     .src_endpoint = HA_THERMOSTAT_ENDPOINT,
                 },
                 .address_mode = ESP_ZB_APS_ADDR_MODE_16_ENDP_PRESENT,
@@ -88,16 +95,48 @@ void turn_trvs_on(void)
                     .id = ESP_ZB_ZCL_ATTR_THERMOSTAT_SYSTEM_MODE_ID,
                     .data.type = ESP_ZB_ZCL_ATTR_TYPE_8BIT_ENUM,
                     .data.size = sizeof(uint8_t),
-                    .data.value = &mode_value
+                    .data.value = &heat_mode
                 }
             };
 
-            ESP_LOGI("TRV OPERATION", "Turning ON TRV at address 0x%04x", stored_devices[i].short_addr);
-            esp_zb_zcl_write_attr_cmd_req(&mode_cmd);
+            ESP_LOGI("TRV OPERATION", "TRV %04x: Setting SystemMode=HEAT", addr);
+            esp_zb_zcl_write_attr_cmd_req(&sysmode_cmd);
+
+            vTaskDelay(pdMS_TO_TICKS(150));  // ✔️ Sonoff TRV requires spacing
+
+            /* ---- Step 2: SET HEATING SETPOINT ---- */
+            static int16_t setpoint_value = 3000;  // 30.00 C (×100)
+
+            esp_zb_zcl_write_attr_cmd_t setpoint_cmd = {
+                .zcl_basic_cmd = {
+                    .dst_addr_u.addr_short = addr,
+                    .dst_endpoint = ep,
+                    .src_endpoint = HA_THERMOSTAT_ENDPOINT,
+                },
+                .address_mode = ESP_ZB_APS_ADDR_MODE_16_ENDP_PRESENT,
+                .clusterID = ESP_ZB_ZCL_CLUSTER_ID_THERMOSTAT,
+                .direction = ESP_ZB_ZCL_CMD_DIRECTION_TO_SRV,
+                .attr_number = 1,
+                .attr_field = &(esp_zb_zcl_attribute_t){
+                    .id = ESP_ZB_ZCL_ATTR_THERMOSTAT_OCCUPIED_HEATING_SETPOINT_ID,
+                    .data.type = ESP_ZB_ZCL_ATTR_TYPE_S16,
+                    .data.size = sizeof(int16_t),
+                    .data.value = (uint8_t *)&setpoint_value
+                }
+            };
+
+            ESP_LOGI("TRV OPERATION",
+                     "TRV %04x: Setting Heating Setpoint = %.2f°C",
+                     addr, setpoint_value / 100.0);
+
+            esp_zb_zcl_write_attr_cmd_req(&setpoint_cmd);
         }
     }
-    g_trv_state=true;
+
+    g_trv_state = true;
 }
+
+
 void display_network_key(void)
 {
     uint8_t network_key[16];
@@ -129,8 +168,7 @@ void ui_display_message(const char *message)
     strncpy(event.message, message, sizeof(event.message) - 1);
     xQueueSend(ui_event_queue, &event, 0);
 }
-
-bool device_exists(uint16_t short_addr)
+void mark_device_seen(uint16_t short_addr)
 {
     int64_t now = esp_timer_get_time() / 1000;
 
@@ -138,34 +176,67 @@ bool device_exists(uint16_t short_addr)
     {
         if (stored_devices[i].short_addr == short_addr)
         {
-            // Check if device was seen recently
-            if ((now - stored_devices[i].last_seen) > REJOIN_THRESHOLD_MS)
-            {
-                // Remove device by shifting remaining elements
-                if (i < stored_device_count - 1) {
-                    // Use memcpy for better performance with structs
-                    memcpy(&stored_devices[i], 
-                           &stored_devices[i + 1], 
-                           sizeof(zigbee_device_t) * (stored_device_count - i - 1));
-                }
-                stored_device_count--;
-                if(stored_devices[i].type == DEVICE_TYPE_TRV)
-                {
-                    trv_count--;
-                }
-                else if(stored_devices[i].type == DEVICE_TYPE_WINDOW_SENSOR)
-                {
-                    window_sensor_count--;
-                }
-                // Clear the last element to avoid dangling pointer
-                memset(&stored_devices[stored_device_count], 0, sizeof(zigbee_device_t));
-                // Log the removal
-                ESP_LOGI("device_exists", "Device 0x%04x expired and removed, new count: %d", 
-                         short_addr, stored_device_count);
-                return false;
-            }
+            stored_devices[i].last_seen = now;
+            ESP_LOGD("HELPERS", "Marked device 0x%04x as seen", short_addr);
+            return;
+        }
+    }
+}
+
+bool device_exists(uint16_t addr) {
+    for (int i = 0; i < stored_device_count; i++) {
+        if (stored_devices[i].short_addr == addr) {
             return true;
         }
     }
     return false;
 }
+
+void initialise_trv(uint16_t addr, uint8_t ep) {
+    // System mode = HEAT
+    static uint8_t sys_heat = ESP_ZB_ZCL_THERMOSTAT_SYSTEM_MODE_HEAT;
+
+    esp_zb_zcl_write_attr_cmd_t mode_cmd = {
+        .zcl_basic_cmd = {
+            .dst_addr_u.addr_short = addr,
+            .dst_endpoint = ep,
+            .src_endpoint = HA_THERMOSTAT_ENDPOINT,
+        },
+        .address_mode = ESP_ZB_APS_ADDR_MODE_16_ENDP_PRESENT,
+        .clusterID = ESP_ZB_ZCL_CLUSTER_ID_THERMOSTAT,
+        .direction = ESP_ZB_ZCL_CMD_DIRECTION_TO_SRV,
+        .attr_number = 1,
+        .attr_field = &(esp_zb_zcl_attribute_t){
+            .id = ESP_ZB_ZCL_ATTR_THERMOSTAT_SYSTEM_MODE_ID,
+            .data.type = ESP_ZB_ZCL_ATTR_TYPE_8BIT_ENUM,
+            .data.size = sizeof(uint8_t),
+            .data.value = &sys_heat,
+        }
+    };
+
+    esp_zb_zcl_write_attr_cmd_req(&mode_cmd);
+
+    // Write a safe default setpoint (e.g., 2000 = 20°C)
+    static int16_t sp = 2000;
+
+    esp_zb_zcl_write_attr_cmd_t sp_cmd = {
+        .zcl_basic_cmd = {
+            .dst_addr_u.addr_short = addr,
+            .dst_endpoint = ep,
+            .src_endpoint = HA_THERMOSTAT_ENDPOINT,
+        },
+        .address_mode = ESP_ZB_APS_ADDR_MODE_16_ENDP_PRESENT,
+        .clusterID = ESP_ZB_ZCL_CLUSTER_ID_THERMOSTAT,
+        .direction = ESP_ZB_ZCL_CMD_DIRECTION_TO_SRV,
+        .attr_number = 1,
+        .attr_field = &(esp_zb_zcl_attribute_t){
+            .id = ESP_ZB_ZCL_ATTR_THERMOSTAT_OCCUPIED_HEATING_SETPOINT_ID,
+            .data.type = ESP_ZB_ZCL_ATTR_TYPE_S16,
+            .data.size = sizeof(int16_t),
+            .data.value = (uint8_t *)&sp
+        }
+    };
+
+    esp_zb_zcl_write_attr_cmd_req(&sp_cmd);
+}
+

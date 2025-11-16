@@ -15,3 +15,5 @@ void turn_trvs_on(void);
 void display_network_key(void);
 void ui_display_message(const char *message);
 bool device_exists(uint16_t short_addr);
+void mark_device_seen(uint16_t short_addr);
+void initialise_trv(uint16_t addr, uint8_t ep);

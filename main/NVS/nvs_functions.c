@@ -181,6 +181,7 @@ esp_err_t load_devices_from_nvs(void)
         if (stored_devices[i].type == DEVICE_TYPE_TRV)
         {
             trv_count++;
+            initialise_trv(stored_devices[i].short_addr, stored_devices[i].endpoint);
         }
         else if (stored_devices[i].type == DEVICE_TYPE_WINDOW_SENSOR)
         {

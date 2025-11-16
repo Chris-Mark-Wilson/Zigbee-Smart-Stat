@@ -118,6 +118,13 @@ Relative humidity (rh%)
 Window status/Presence detected icons. The window will be OPEN if any windows are open and the presence icon will be SOLID when presence detected, hollow when not. These are just indicators. The actual range to a detected person/moving object is shown underneath the presence icon in metres to 1 decimal place (accuracy 10cm)
 
 
+### Setting up ###
+Sonoff trv - with trv OFF the valve - insert batteries, n will display. Install trv head onto valve and press top button - A will display followed by status/temp.
+If network on esp32 is open, trv will bind at this point.
+If not, boot up the esp, finish the settings and the network will open, turn the trv to OFF and press and hold top button.. the trv will now be in pairing mode and the esp32 should find it..
+if you get unsecured rejoin, reset the esp32, remove the trv head and remove batteries and repeat the process so the trv 'forgets who its dad is' basically, and doesnt try to rejoin on the same endpoint as the esp will have forgotten the trv 'your dead to me now, dont try and get back in cos you will be rejoining unsecurely'
+
+
 
 ### TODO ###
 Currently still under development.
