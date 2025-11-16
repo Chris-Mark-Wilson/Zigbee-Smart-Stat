@@ -99,7 +99,7 @@ void turn_trvs_off(void)
     g_trv_state = false;
 }
 
-//this is oncorrect as it is getting ignored by the trv, need to set occupied heating setpoint instead
+//this is incorrect as it is getting ignored by the trv, need to set occupied heating setpoint instead
 // void turn_trvs_on(void)
 // {
 //     for (uint8_t i = 0; i < stored_device_count; i++)
@@ -202,8 +202,7 @@ void ui_display_message(const char *message)
     strncpy(event.message, message, sizeof(event.message) - 1);
     xQueueSend(ui_event_queue, &event, 0);
 }
-
-bool device_exists(uint16_t short_addr)
+void mark_device_seen(uint16_t short_addr)
 {
     int64_t now = esp_timer_get_time() / 1000;
 
@@ -211,32 +210,56 @@ bool device_exists(uint16_t short_addr)
     {
         if (stored_devices[i].short_addr == short_addr)
         {
-            // Check if device was seen recently
-            if ((now - stored_devices[i].last_seen) > REJOIN_THRESHOLD_MS)
-            {
-                // Remove device by shifting remaining elements
-                if (i < stored_device_count - 1) {
-                    // Use memcpy for better performance with structs
-                    memcpy(&stored_devices[i], 
-                           &stored_devices[i + 1], 
-                           sizeof(zigbee_device_t) * (stored_device_count - i - 1));
-                }
-                stored_device_count--;
-                if(stored_devices[i].type == DEVICE_TYPE_TRV)
-                {
-                    trv_count--;
-                }
-                else if(stored_devices[i].type == DEVICE_TYPE_WINDOW_SENSOR)
-                {
-                    window_sensor_count--;
-                }
-                // Clear the last element to avoid dangling pointer
-                memset(&stored_devices[stored_device_count], 0, sizeof(zigbee_device_t));
-                // Log the removal
-                ESP_LOGI("device_exists", "Device 0x%04x expired and removed, new count: %d", 
-                         short_addr, stored_device_count);
-                return false;
-            }
+            stored_devices[i].last_seen = now;
+            ESP_LOGD("HELPERS", "Marked device 0x%04x as seen", short_addr);
+            return;
+        }
+    }
+}
+//only check.. never modify the list, deleting it randomly causes all kinds of issues with devices sending reports and we dont know them anymore..
+// bool device_exists(uint16_t short_addr)
+// {
+//     int64_t now = esp_timer_get_time() / 1000;
+
+//     for (uint8_t i = 0; i < stored_device_count; i++)
+//     {
+//         if (stored_devices[i].short_addr == short_addr)
+//         {
+//             // Check if device was seen recently
+//             if ((now - stored_devices[i].last_seen) > REJOIN_THRESHOLD_MS)
+//             {
+//                 // Remove device by shifting remaining elements
+//                 if (i < stored_device_count - 1) {
+//                     // Use memcpy for better performance with structs
+//                     memcpy(&stored_devices[i], 
+//                            &stored_devices[i + 1], 
+//                            sizeof(zigbee_device_t) * (stored_device_count - i - 1));
+//                 }
+//                 stored_device_count--;
+//                 if(stored_devices[i].type == DEVICE_TYPE_TRV)
+//                 {
+//                     trv_count--;
+//                 }
+//                 else if(stored_devices[i].type == DEVICE_TYPE_WINDOW_SENSOR)
+//                 {
+//                     window_sensor_count--;
+//                 }
+//                 // Clear the last element to avoid dangling pointer
+//                 memset(&stored_devices[stored_device_count], 0, sizeof(zigbee_device_t));
+//                 // Log the removal
+//                 ESP_LOGI("device_exists", "Device 0x%04x expired and removed, new count: %d", 
+//                          short_addr, stored_device_count);
+//                 return false;
+//             }
+//             return true;
+//         }
+//     }
+//     return false;
+// }
+//so instead, 
+bool device_exists(uint16_t addr) {
+    for (int i = 0; i < stored_device_count; i++) {
+        if (stored_devices[i].short_addr == addr) {
             return true;
         }
     }

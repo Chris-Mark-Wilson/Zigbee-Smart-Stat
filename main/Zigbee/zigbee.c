@@ -631,20 +631,21 @@ void zigbee_signal_handler(esp_zb_app_signal_t *signal_struct)
 
             // Try to identify as window sensor first (simpler device)
             find_window_sensor(&cmd_req, find_window_sensor_cb, new_ieee_addr);
+            find_trv(&cmd_req, find_trv_cb, new_ieee_addr);
 
             // If that fails (no response after timeout), try as TRV
-            vTaskDelay(SHORT_DELAY); // Give window sensor check time to complete
+            // vTaskDelay(SHORT_DELAY); // Give window sensor check time to complete
             // check to see if window sensor was found and stored
-            if (!found_window_sensor)
-            {
-                ESP_LOGI(TAG, "Window sensor not found, trying TRV");
-                // If window sensor not found, try to identify as TRV
-                find_trv(&cmd_req, find_trv_cb, new_ieee_addr);
-            }
-            else
-            {
-                ESP_LOGI(TAG, "Window sensor found, skipping TRV search");
-            }
+            // if (!found_window_sensor)
+            // {
+            //     ESP_LOGI(TAG, "Window sensor not found, trying TRV");
+            //     // If window sensor not found, try to identify as TRV
+               
+            // }
+            // else
+            // {
+            //     ESP_LOGI(TAG, "Window sensor found, skipping TRV search");
+            // }
         }
         break;
     }
@@ -687,17 +688,19 @@ void zigbee_signal_handler(esp_zb_app_signal_t *signal_struct)
             ESP_LOGI("SIGNAL HANDLER - device update", "Device update notification received from %s",get_device_name( update_params->short_addr));
             
             uint16_t status=update_params->status;
-        if(status == ESP_ZB_ZDO_STANDARD_DEV_UNSECURED_JOIN){
-            ESP_LOGI("SIGNAL HANDLER - device update", "Device %s joined network unsecured",get_device_name( update_params->short_addr));
-            // If the device is not in our list, just log it
-            ui_event_t event = {
-                .target_screen = SCREEN_BOOT,
-                .message = "Unsecure rejoin detected, please remove and replace batteries "};
-            xQueueSend(ui_event_queue, &event, 0);
-            vTaskDelay(SHORT_DELAY);
-            return; // Do not process further for unsecured join
-        } 
-    
+        // if(status == ESP_ZB_ZDO_STANDARD_DEV_UNSECURED_JOIN){
+        //     ESP_LOGI("SIGNAL HANDLER - device update", "Device %s joined network unsecured",get_device_name( update_params->short_addr));
+        //     // If the device is not in our list, just log it
+        //     ui_event_t event = {
+        //         .target_screen = SCREEN_BOOT,
+        //         .message = "Unsecure rejoin detected, please remove and replace batteries "};
+        //     xQueueSend(ui_event_queue, &event, 0);
+        //     vTaskDelay(SHORT_DELAY);
+        //     return; // Do not process further for unsecured join
+        // } 
+    if (status == ESP_ZB_ZDO_STANDARD_DEV_UNSECURED_JOIN) {
+    ESP_LOGW(TAG, "Unsecured join (normal on first pairing)");
+}
         char status_message[128];
         // Check the status and prepare the message                                                                             
  
