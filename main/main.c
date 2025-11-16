@@ -300,39 +300,85 @@ case ESP_ZB_CORE_CMD_IAS_ZONE_ZONE_STATUS_CHANGE_NOT_ID:
     return ret;
 }
 
-// TODO implement when everything is bound and getting data
-static void evaluate_control_logic(void) {
-//     if(!g_presence_detected){
-//         // No presence detected - turn off TRV
-//         if(g_trv_state) {
-//             turn_trvs_off();
-//         }
-//         return;
-//     }
-    if(g_is_window_open) {
-        // If window is open, turn off TRV
-        if(g_trv_state) {
+static void evaluate_control_logic(void)
+{
+    const char *TAG = "CONTROL";
+
+    int64_t now = esp_timer_get_time() / 1000;  // ms timestamp
+
+    // --------------------------------------------------------
+    // 1. Apply presence timeout logic
+    // --------------------------------------------------------
+    bool presence_active = false;
+    if (g_presence_detected) {
+        g_last_presence_time = now;
+        presence_active = true;
+    } else {
+        // No new presence — check if still within timeout
+        if ((now - g_last_presence_time) < PRESENCE_TIMEOUT_MS) {
+            presence_active = true;
+        }
+    }
+
+    // --------------------------------------------------------
+    // 2. Window open always wins — kill heating
+    // --------------------------------------------------------
+    if (g_is_window_open) {
+        if (g_trv_state) {
+            ESP_LOGI(TAG, "Window OPEN → Forcing TRV OFF");
             turn_trvs_off();
         }
         return;
     }
-//     //if temp > temp max turn off trv
-//     if(g_temperature>=g_target_high_temp && g_trv_state) {
-//         turn_trvs_off();
-//         return;
-//     }
-//     //if presence detected && windows are closed && temp < temp max turn on trv
-//     if(g_presence_detected && !g_is_window_open && g_temperature < g_target_high_temp) {
-//         turn_trvs_on();
-//         return;
-//     }
-//     //if temp < temp min && windows are closed turn on trv 
-//     if(g_temperature < g_target_low_temp && !g_is_window_open) {
-//         turn_trvs_on();
-//         return;
-//     }
-// return;
+
+    // --------------------------------------------------------
+    // 3. Emergency "don't let room freeze" rule
+    // --------------------------------------------------------
+    if (g_temperature < g_target_low_temp) {
+        if (!g_trv_state) {
+            ESP_LOGI(TAG, "Temp %.1f < low temp %d → Turning TRV ON (freeze protection)",
+                    g_temperature, g_target_low_temp);
+            turn_trvs_on();
+        }
+        return;
+    }
+
+    // --------------------------------------------------------
+    // 4. No presence? Keep heating OFF unless below min temp
+    // --------------------------------------------------------
+    if (!presence_active) {
+        if (g_trv_state) {
+            ESP_LOGI(TAG, "No presence (timeout reached) → Turning TRV OFF");
+            turn_trvs_off();
+        }
+        return;
+    }
+
+    // --------------------------------------------------------
+    // 5. Presence detected AND window closed → full comfort logic
+    // --------------------------------------------------------
+    if (g_temperature >= g_target_high_temp) {
+        // Too warm → turn off
+        if (g_trv_state) {
+            ESP_LOGI(TAG, "Temp %.1f >= high temp %d → Turning TRV OFF",
+                    g_temperature, g_target_high_temp);
+            turn_trvs_off();
+        }
+        return;
+    }
+
+    if (g_temperature < g_target_high_temp) {
+        // Too cold → turn on
+        if (!g_trv_state) {
+            ESP_LOGI(TAG, "Temp %.1f < high temp %d AND presence detected → Turning TRV ON",
+                    g_temperature, g_target_high_temp);
+            turn_trvs_on();
+        }
+        return;
+    }
 }
+
+
 
 static void lvgl_task(void *pvParameters)
 {
@@ -557,7 +603,12 @@ static void hmmd_read_task(void *arg)
                     g_current_range = range_cm; // Update the global range variable defined in ui_screens.h
                     // Update presence state
 
-                    g_presence_detected = (range_cm < g_range_limit* 100.0f); // Convert limit to cm for comparison
+                        bool detected_now = (range_cm < g_range_limit * 100.0f);
+
+                        if (detected_now) {
+                            g_presence_detected = true;
+                            g_last_presence_time = esp_timer_get_time() / 1000;   // restart timer
+                        }
 
                     // Always trigger UI update when we get valid range data
                     ui_event_t event = {
