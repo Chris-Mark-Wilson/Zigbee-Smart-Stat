@@ -129,8 +129,6 @@ if you get unsecured rejoin, reset the esp32, remove the trv head and remove bat
 ### TODO ###
 Currently still under development.
 
-Control logic...
-
 Add better indication when devices pair e.g. show device list with name and type as they join the network
 
 Add a Status Screen to be tapped from main that shows device list with battery states
