@@ -6,7 +6,7 @@
 
 
 ### instructions for use..
-
+![Pic of built and working thermostat](/stat.jpg)
 Fork and clone, 
 
 Using vscode and Espressifs ESP-IDF extension, download and install the [esp-idf](https://docs.espressif.com/projects/esp-idf/en/stable/esp32c6/get-started/index.html). Follow the instructions. 
@@ -35,7 +35,7 @@ Window sensors (if required), I managed to get the [Tuya](https://www.aliexpress
 
 A Zigbee TRV (or more than one if needed), I use [Sonoff TRVs](https://www.aliexpress.com/item/1005006304701422.html?src=google&pdp_npi=4%40dis!GBP!11.99!11.99!!!!!%40!12000036689723777!ppc!!!&src=google&albch=shopping&acnt=494-037-6276&isdl=y&slnk=&plac=&mtctp=&albbt=Google_7_shopping&aff_platform=google&aff_short_key=UneMJZVf&gclsrc=aw.ds&&albagn=888888&&ds_e_adid=&ds_e_matchtype=&ds_e_device=c&ds_e_network=x&ds_e_product_group_id=&ds_e_product_id=en1005006304701422&ds_e_product_merchant_id=105390795&ds_e_product_country=GB&ds_e_product_language=en&ds_e_product_channel=online&ds_e_product_store_id=&ds_url_v=2&albcp=17859500389&albag=&isSmbAutoCall=false&needSmbHouyi=false&gad_source=1&gad_campaignid=17190468917&gbraid=0AAAAADznYb8oa-5LLUyyL9AgPnnJ-qdUk&gclid=CjwKCAjw6NrBBhB6EiwAvnT_ruGg9toJBfGORUEunaz_FILTFZ8ALfvogWUtMXHp_WIOrqpm4GeAYRoC6B8QAvD_BwE)
 
-A *REGULATED* step down 240v-5v transformer [amazon](https://www.amazon.co.uk/JZK-HLK-PM01-supply-module-isolated-220V-5V/dp/B073QH1XT8/ref=sr_1_16?dib=eyJ2IjoiMSJ9.BzZYYZhEGlm3qPYAzjpljeHJwXb1Hl5bcsM_4cxq8d0LCISV0JE_rm3w3W_ZkzyaZ0rCnphgLibITFq2GiqLFCaV_YRNuF8Ep3VjvkPlJSJiqxrKXTSXDvbo2JTL_8Rg3fi5OiIef9k9C_2XZhMKHojRC55JRYfgo2mHrpXUc2n0Jd1UJ7Ayb4RT-ZuX003gLNpv8G-9LanCURR4KRQYHkvzVClANg7vwGXhTWYLw_o.oZ6U9KH2tcU_V2ANbvEeO98iov4HISG2nzp7rTHY6LU&dib_tag=se&keywords=5v+transformer&qid=1748439831&sr=8-16) if you plan to run it on 240v mains but *BE CAREFULL*, also some screw terminals to wire the mains into, connect this to the **5 Volt** (VBUS) GPIO pin on the chip
+A *REGULATED* step down 240v-5v transformer [amazon](https://www.amazon.co.uk/JZK-HLK-PM01-supply-module-isolated-220V-5V/dp/B073QH1XT8/ref=sr_1_16?dib=eyJ2IjoiMSJ9.BzZYYZhEGlm3qPYAzjpljeHJwXb1Hl5bcsM_4cxq8d0LCISV0JE_rm3w3W_ZkzyaZ0rCnphgLibITFq2GiqLFCaV_YRNuF8Ep3VjvkPlJSJiqxrKXTSXDvbo2JTL_8Rg3fi5OiIef9k9C_2XZhMKHojRC55JRYfgo2mHrpXUc2n0Jd1UJ7Ayb4RT-ZuX003gLNpv8G-9LanCURR4KRQYHkvzVClANg7vwGXhTWYLw_o.oZ6U9KH2tcU_V2ANbvEeO98iov4HISG2nzp7rTHY6LU&dib_tag=se&keywords=5v+transformer&qid=1748439831&sr=8-16) if you plan to run it on 240v mains but *BE CAREFULL*, also some screw terminals to wire the mains into, connect this to the **5 Volt** GPIO pin on the chip
 
 A Case (enclosure) To assemble into, [these ones](https://thepihut.com/products/room-sensor-enclosure-size-1) will fit over a standard (76mm) uk single socket backbox or pattress
 
@@ -57,7 +57,7 @@ A Case (enclosure) To assemble into, [these ones](https://thepihut.com/products/
 ### If the room becomes unoccupied for more than 10 minutes, set the trv to a lower target temp. ###
 #### Rather than turn it off completely until the room is occupied again, it monitors the room temp and will keep the room at the LOWER limit while unoccupied. This is to reduce heating bills, but also because a 4-5 degree increase in temp when the room becomes occupied is easily reached quickly, wheras a 10 degree increase would take an uncomfortably long time.
 ####
-### As soon as the thermostat registers occupation for more than 10 seconds (again, no false positives) it sets the target temp to the higher limit. ###
+### As soon as the thermostat registers occupation for more than 30 (defined in settings.h) seconds (again, no false positives) it sets the target temp to the higher limit. ###
 
 ### So, if the room is below upper target temp AND the room is occupied AND the windows are closed, it will open the trv until target temp is reached and will monitor and keep it there. ###
 ### If the room is unoccupied AND the windows are closed it will keep the room at the lower target temp ###
@@ -128,8 +128,6 @@ if you get unsecured rejoin, reset the esp32, remove the trv head and remove bat
 
 ### TODO ###
 Currently still under development.
-
-Control logic...
 
 Add better indication when devices pair e.g. show device list with name and type as they join the network
 
